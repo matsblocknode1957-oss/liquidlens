@@ -32,7 +32,11 @@ export default function AlertsPage() {
         body: JSON.stringify({ email, wallet, threshold }),
       });
       const data = await res.json();
-      if (data.url) window.location.href = data.url;
+      
+if (data.sessionId) {
+  const stripe = await import("@stripe/stripe-js").then(m => m.loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!));
+  await stripe?.redirectToCheckout({ sessionId: data.sessionId });
+}
     } catch (e) {
       setUpgrading(false);
     }
