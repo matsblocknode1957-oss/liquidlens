@@ -2,12 +2,16 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
 
-const resend = new Resend(process.env.RESEND_API_KEY!);
+function getResend() {
+  return new Resend(process.env.RESEND_API_KEY!);
+}
 
 const AAVE_ENDPOINT = "https://api.thegraph.com/subgraphs/name/aave/protocol-v3";
 const COMPOUND_ENDPOINT = "https://api.thegraph.com/subgraphs/name/messari/compound-v3-ethereum";
@@ -124,7 +128,7 @@ async function sendAlertEmail(email: string, wallet: string, positions: Position
   const shortWallet = `${wallet.slice(0, 6)}…${wallet.slice(-4)}`;
   const worstHF = Math.min(...positions.map((p) => p.healthFactor));
 
-  await resend.emails.send({
+  await getResend().emails.send({
     from: "LiquidLens Alerts <alerts@liquidlens.uk>",
     to: email,
     subject: `⚠️ Alert: Health factor ${worstHF.toFixed(2)} — ${shortWallet}`,
@@ -179,7 +183,7 @@ async function saveSnapshot(wallet: string, positions: PositionResult[]) {
     collateral_usd: p.collateralUSD,
     debt_usd: p.debtUSD,
   }));
-  const { error } = await supabase.from("position_snapshots").insert(rows);
+  const { error } = await getSupabase().from("position_snapshots").insert(rows);
   if (error) console.error("Snapshot save error:", error);
 }
 
@@ -188,6 +192,8 @@ export async function GET(request: Request) {
   if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const supabase = getSupabase();
 
   const { data: subscribers, error: subError } = await supabase
     .from("subscribers")
@@ -243,3 +249,4 @@ export async function GET(request: Request) {
     timestamp: new Date().toISOString(),
   });
 }
+
