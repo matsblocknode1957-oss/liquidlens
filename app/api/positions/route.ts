@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const AAVE_SUBGRAPH = `https://gateway.thegraph.com/api/${process.env.NEXT_PUBLIC_GRAPH_API_KEY}/subgraphs/id/0x87b2fe4b8947aacf1b5d1e91e93a29dba4a02c9e`;
+const AAVE_SUBGRAPH = `https://gateway.thegraph.com/api/${process.env.NEXT_PUBLIC_GRAPH_API_KEY}/subgraphs/id/Cd2gEDVeqnjBn1hSeqFMitw8Q1iiyV9FYUZkLNRcL57s`;
 
 export async function GET(req: NextRequest) {
   const wallet = req.nextUrl.searchParams.get("wallet")?.toLowerCase();
