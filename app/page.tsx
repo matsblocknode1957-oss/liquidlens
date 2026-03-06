@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 
-const AAVE_ENDPOINT = "https://api.thegraph.com/subgraphs/name/aave/protocol-v3";
+const AAVE_ENDPOINT = `https://gateway.thegraph.com/api/${process.env.NEXT_PUBLIC_GRAPH_API_KEY}/subgraphs/id/Cd2gEDVeqnjBn1hSeqFMitw8Q1iiyV9FYUZkLNRcL87g`;
 const COMPOUND_ENDPOINT = "https://api.thegraph.com/subgraphs/name/messari/compound-v3-ethereum";
 
 interface ProtocolData {
