@@ -1,200 +1,185 @@
 "use client";
-
-import { useState, useEffect } from "react";
-
-const COLORS = {
-  accent: "#3b82f6",
-  bg: "#0a0e1a",
-  card: "#0d1628",
-  border: "#1e2a40",
-  textPrimary: "#f9fafb",
-  textSecondary: "#6b7280",
-  safe: "#10b981",
-  moderate: "#f59e0b",
-  atRisk: "#f97316",
-  critical: "#ef4444",
-};
-
-const THRESHOLDS = [
-  { value: 1.2, label: "1.2 — Critical only", desc: "Alert when you're on the edge. For experienced users.", color: COLORS.critical },
-  { value: 1.5, label: "1.5 — At Risk (recommended)", desc: "A healthy buffer before liquidation. Most popular.", color: COLORS.atRisk, popular: true },
-  { value: 1.8, label: "1.8 — Moderate", desc: "Early warning. More alerts, more peace of mind.", color: COLORS.moderate },
-  { value: 2.0, label: "2.0 — Safe", desc: "Alert as soon as health drops below safe zone.", color: COLORS.safe },
-];
+import { useState } from "react";
 
 export default function AlertsPage() {
-  const [dark, setDark] = useState(true);
   const [email, setEmail] = useState("");
   const [wallet, setWallet] = useState("");
   const [threshold, setThreshold] = useState(1.5);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState(false);
-
-  useEffect(() => {
-    const stored = localStorage.getItem("liquidlens-dark");
-    if (stored !== null) setDark(stored === "true");
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("success") === "true") setSuccess(true);
-  }, []);
+  const [upgrading, setUpgrading] = useState(false);
+  const [dark, setDark] = useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("liquidlens-dark") === "true";
+    }
+    return false;
+  });
 
   const toggleDark = () => {
-    setDark((d) => { localStorage.setItem("liquidlens-dark", String(!d)); return !d; });
+    const next = !dark;
+    setDark(next);
+    localStorage.setItem("liquidlens-dark", String(next));
   };
 
-  const handleSubscribe = async () => {
-    if (!email.includes("@")) { setError("Please enter a valid email address."); return; }
-    if (!wallet || wallet.length < 40) { setError("Please enter a valid Ethereum wallet address."); return; }
-    setError("");
-    setLoading(true);
+  const handleUpgrade = async () => {
+    if (!email.includes("@")) {
+      alert("Please enter your email first");
+      return;
+    }
+    setUpgrading(true);
     try {
-      const res = await fetch("/api/create-checkout-session", {
+      const res = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, wallet, threshold }),
       });
-      const { sessionId } = await res.json();
-      const stripeJs = await import("@stripe/stripe-js");
-const stripe = await stripeJs.loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
-if (!stripe) throw new Error("Stripe failed to load");
-const result = await (stripe as any).redirectToCheckout({ sessionId });
-if (result.error) throw result.error;
-    } catch (err: any) {
-      setError(err.message ?? "Something went wrong. Please try again.");
-      setLoading(false);
+      const data = await res.json();
+      if (data.url) window.location.href = data.url;
+    } catch (e) {
+      setUpgrading(false);
     }
   };
 
-  const bg = dark ? COLORS.bg : "#f0f4ff";
-  const cardBg = dark ? COLORS.card : "#ffffff";
-  const borderColor = dark ? COLORS.border : "#e2e8f0";
-  const textPrimary = dark ? COLORS.textPrimary : "#0f172a";
-  const textSecondary = dark ? COLORS.textSecondary : "#64748b";
+  const bg = dark ? "#0a0e1a" : "#f8f9fb";
+  const headerBg = dark ? "#0d1628" : "#ffffff";
+  const headerBorder = dark ? "#1e2a40" : "#eaecf0";
+  const cardBg = dark ? "#0d1628" : "#ffffff";
+  const cardBorder = dark ? "#1e2a40" : "#eaecf0";
+  const textPrimary = dark ? "#f9fafb" : "#111827";
+  const textSecondary = dark ? "#6b7280" : "#9ca3af";
+  const inputBg = dark ? "#111f38" : "#ffffff";
+  const inputBorder = dark ? "#1e2a40" : "#e5e7eb";
+  const navBg = dark ? "#0d1628" : "#ffffff";
+  const navBorder = dark ? "#1e2a40" : "#eaecf0";
+
+  const thresholds = [
+    { value: 2.0, label: "2.0", desc: "Conservative — alert when moderately safe", color: "#10b981" },
+    { value: 1.5, label: "1.5", desc: "Balanced — alert when getting risky", color: "#f59e0b" },
+    { value: 1.2, label: "1.2", desc: "Aggressive — alert when critical", color: "#ef4444" },
+  ];
 
   return (
-    <div style={{ minHeight: "100vh", background: bg, color: textPrimary, fontFamily: "'Inter', system-ui, sans-serif" }}>
-      <nav style={{ background: dark ? "#0d162880" : "#ffffffcc", backdropFilter: "blur(12px)", borderBottom: `1px solid ${borderColor}`, padding: "0 20px", height: 56, display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 100 }}>
-        <a href="/" style={{ textDecoration: "none", display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ width: 28, height: 28, background: `linear-gradient(135deg, ${COLORS.accent}, #60a5fa)`, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>💧</div>
-          <span style={{ fontWeight: 700, fontSize: 16, color: textPrimary }}>LiquidLens</span>
-        </a>
-        <button onClick={toggleDark} style={{ background: "none", border: `1px solid ${borderColor}`, borderRadius: 8, color: textSecondary, padding: "4px 12px", fontSize: 13, cursor: "pointer" }}>
-          {dark ? "☀️ Light" : "🌙 Dark"}
-        </button>
-      </nav>
+    <main style={{ fontFamily: "'Segoe UI', sans-serif", background: bg, minHeight: "100vh", paddingBottom: "70px", transition: "background 0.2s ease" }}>
 
-      <main style={{ maxWidth: 600, margin: "0 auto", padding: "32px 20px 120px" }}>
-
-        {success ? (
-          <div style={{ textAlign: "center", padding: "60px 20px" }}>
-            <div style={{ fontSize: 56, marginBottom: 16 }}>🎉</div>
-            <h1 style={{ fontSize: 26, fontWeight: 800, margin: "0 0 12px", letterSpacing: "-0.02em" }}>You're all set!</h1>
-            <p style={{ color: textSecondary, fontSize: 15, marginBottom: 28 }}>We'll monitor your position every 60 seconds and email you before you're at risk of liquidation.</p>
-            <a href="/positions" style={{ background: COLORS.accent, color: "#fff", textDecoration: "none", padding: "12px 24px", borderRadius: 10, fontWeight: 600, fontSize: 15 }}>View your positions →</a>
+      <div style={{ background: headerBg, padding: "14px 20px", borderBottom: `1px solid ${headerBorder}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <div style={{ width: "34px", height: "34px", background: "linear-gradient(135deg, #3b82f6, #1d4ed8)", borderRadius: "8px", display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontWeight: "800", fontSize: "14px" }}>L🔍</div>
+          <div>
+            <div style={{ fontSize: "18px", fontWeight: "700", color: textPrimary }}>LiquidLens</div>
+            <div style={{ fontSize: "11px", color: textSecondary }}>DeFi Position Monitor</div>
           </div>
-        ) : (
-          <>
-            <div style={{ marginBottom: 32, textAlign: "center" }}>
-              <div style={{ width: 56, height: 56, background: `${COLORS.accent}20`, border: `1px solid ${COLORS.accent}40`, borderRadius: 16, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, margin: "0 auto 16px" }}>🔔</div>
-              <h1 style={{ fontSize: 28, fontWeight: 800, margin: "0 0 8px", letterSpacing: "-0.02em" }}>Liquidation Alerts</h1>
-              <p style={{ margin: 0, color: textSecondary, fontSize: 15 }}>Get email alerts before your position is liquidated. We check every 60 seconds.</p>
-            </div>
-
-            <div style={{ background: `linear-gradient(135deg, ${COLORS.accent}20, #60a5fa10)`, border: `1px solid ${COLORS.accent}40`, borderRadius: 16, padding: 20, marginBottom: 28, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div>
-                <div style={{ fontSize: 13, color: textSecondary, marginBottom: 4 }}>Premium alerts</div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: textPrimary, letterSpacing: "-0.02em" }}>£4.99<span style={{ fontSize: 14, fontWeight: 400, color: textSecondary }}> / month</span></div>
-              </div>
-              <div style={{ textAlign: "right" }}>
-                {["60s monitoring", "Unlimited wallets", "Instant email alerts"].map((f) => (
-                  <div key={f} style={{ fontSize: 12, color: COLORS.safe, marginBottom: 3, display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
-                    <span>✓</span> {f}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ background: cardBg, border: `1px solid ${borderColor}`, borderRadius: 16, padding: 24, marginBottom: 20 }}>
-              <div style={{ marginBottom: 20 }}>
-                <label style={{ fontSize: 13, color: textSecondary, display: "block", marginBottom: 8, fontWeight: 500 }}>Email address</label>
-                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" style={{ width: "100%", background: dark ? "#ffffff0a" : "#f8fafc", border: `1px solid ${borderColor}`, borderRadius: 10, padding: "11px 14px", color: textPrimary, fontSize: 14, outline: "none", boxSizing: "border-box" }} />
-              </div>
-
-              <div style={{ marginBottom: 24 }}>
-                <label style={{ fontSize: 13, color: textSecondary, display: "block", marginBottom: 8, fontWeight: 500 }}>Wallet address to monitor</label>
-                <input value={wallet} onChange={(e) => setWallet(e.target.value)} placeholder="0x..." style={{ width: "100%", background: dark ? "#ffffff0a" : "#f8fafc", border: `1px solid ${borderColor}`, borderRadius: 10, padding: "11px 14px", color: textPrimary, fontSize: 14, fontFamily: "'JetBrains Mono', monospace", outline: "none", boxSizing: "border-box" }} />
-              </div>
-
-              <div style={{ marginBottom: 24 }}>
-                <label style={{ fontSize: 13, color: textSecondary, display: "block", marginBottom: 12, fontWeight: 500 }}>Alert me when health factor drops below</label>
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {THRESHOLDS.map((t) => {
-                    const selected = threshold === t.value;
-                    return (
-                      <div key={t.value} onClick={() => setThreshold(t.value)} style={{ background: selected ? `${t.color}15` : dark ? "#ffffff06" : "#f8fafc", border: `1.5px solid ${selected ? t.color : borderColor}`, borderRadius: 12, padding: "12px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: 12 }}>
-                        <div style={{ width: 18, height: 18, borderRadius: "50%", border: `2px solid ${t.color}`, background: selected ? t.color : "transparent", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                          {selected && <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#fff" }} />}
-                        </div>
-                        <div>
-                          <div style={{ fontSize: 14, fontWeight: 600, color: selected ? t.color : textPrimary, display: "flex", alignItems: "center", gap: 8 }}>
-                            {t.label}
-                            {t.popular && <span style={{ fontSize: 10, background: COLORS.accent, color: "#fff", padding: "2px 7px", borderRadius: 99, fontWeight: 700 }}>POPULAR</span>}
-                          </div>
-                          <div style={{ fontSize: 12, color: textSecondary, marginTop: 2 }}>{t.desc}</div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {error && (
-                <div style={{ background: `${COLORS.critical}15`, border: `1px solid ${COLORS.critical}40`, borderRadius: 10, padding: "10px 14px", fontSize: 13, color: COLORS.critical, marginBottom: 16 }}>
-                  {error}
-                </div>
-              )}
-
-              <button onClick={handleSubscribe} disabled={loading} style={{ width: "100%", background: COLORS.accent, color: "#fff", border: "none", borderRadius: 12, padding: "14px", fontSize: 16, fontWeight: 700, cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.7 : 1 }}>
-                {loading ? "Redirecting to payment…" : "Subscribe for £4.99/month"}
-              </button>
-              <p style={{ textAlign: "center", fontSize: 12, color: textSecondary, margin: "12px 0 0" }}>Powered by Stripe. Cancel anytime. Read-only wallet monitoring.</p>
-            </div>
-
-            <div style={{ background: cardBg, border: `1px solid ${borderColor}`, borderRadius: 16, padding: 24 }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: textPrimary, marginBottom: 16 }}>How it works</div>
-              {[
-                { q: "How often do you check my position?", a: "Every 60 seconds. We fetch live data from Aave and Compound subgraphs continuously." },
-                { q: "Do you need my private keys?", a: "Never. We only need your public wallet address to read your on-chain position." },
-                { q: "What happens when I get an alert?", a: "You'll receive an email showing your current health factor, collateral value, and how far you are from liquidation." },
-                { q: "Can I cancel?", a: "Yes, anytime. Cancel from your Stripe billing portal and monitoring stops immediately." },
-              ].map((item, i, arr) => (
-                <div key={i} style={{ paddingBottom: 14, marginBottom: i < arr.length - 1 ? 14 : 0, borderBottom: i < arr.length - 1 ? `1px solid ${borderColor}` : "none" }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: textPrimary, marginBottom: 4 }}>{item.q}</div>
-                  <div style={{ fontSize: 13, color: textSecondary, lineHeight: 1.5 }}>{item.a}</div>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-      </main>
-
-      <nav style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: dark ? "#0d1628ee" : "#ffffffee", backdropFilter: "blur(12px)", borderTop: `1px solid ${borderColor}`, display: "flex", justifyContent: "space-around", padding: "8px 0 16px", zIndex: 100 }}>
-        {[
-          { label: "Market", href: "/", icon: "📊" },
-          { label: "Positions", href: "/positions", icon: "🏦" },
-          { label: "Alerts", href: "/alerts", icon: "🔔", active: true },
-        ].map((tab) => (
-          <a key={tab.label} href={tab.href} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, textDecoration: "none", color: tab.active ? COLORS.accent : textSecondary, fontSize: 11, fontWeight: tab.active ? 700 : 400, minWidth: 60 }}>
-            <span style={{ fontSize: 20 }}>{tab.icon}</span>
-            {tab.label}
-          </a>
-        ))}
-      </nav>
-
-      <div style={{ textAlign: "center", padding: "8px 20px 100px", fontSize: 12, color: textSecondary }}>
-        Not financial advice. <a href="/terms" style={{ color: textSecondary }}>Terms</a> · <a href="/privacy" style={{ color: textSecondary }}>Privacy</a> · LiquidLens v1.0
+        </div>
+        <button onClick={toggleDark} style={{ width: "32px", height: "32px", borderRadius: "8px", border: `1px solid ${headerBorder}`, background: dark ? "#1e2a40" : "#f3f4f6", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "16px" }}>
+          {dark ? "☀️" : "🌙"}
+        </button>
       </div>
-    </div>
+
+      <div style={{ margin: "16px 20px 0", background: "linear-gradient(135deg, #1e3a5f, #0d1628)", borderRadius: "12px", padding: "20px", border: `1px solid #1e3a5f` }}>
+        <div style={{ fontSize: "16px", fontWeight: "800", color: "#ffffff", marginBottom: "6px" }}>⚡ Never Get Liquidated Again</div>
+        <div style={{ fontSize: "13px", color: "#93c5fd", lineHeight: "1.5" }}>Get instant email alerts when your health factor drops below your chosen threshold. React before the market does.</div>
+      </div>
+
+      <div style={{ margin: "16px 20px 0", background: cardBg, borderRadius: "12px", padding: "20px", border: `1px solid ${cardBorder}` }}>
+        <div style={{ fontSize: "14px", fontWeight: "700", color: textPrimary, marginBottom: "14px" }}>Alert Threshold</div>
+        {thresholds.map((t) => (
+          <div
+            key={t.value}
+            onClick={() => setThreshold(t.value)}
+            style={{ display: "flex", alignItems: "center", gap: "12px", padding: "12px", borderRadius: "8px", border: `2px solid ${threshold === t.value ? t.color : (dark ? "#1e2a40" : "#e5e7eb")}`, marginBottom: "8px", cursor: "pointer", background: threshold === t.value ? (dark ? "#080e1a" : "#f8f9fb") : "transparent", transition: "all 0.15s ease" }}
+          >
+            <div style={{ width: "36px", height: "36px", borderRadius: "8px", background: threshold === t.value ? t.color : (dark ? "#1e2a40" : "#f3f4f6"), display: "flex", alignItems: "center", justifyContent: "center", fontWeight: "800", fontSize: "13px", color: threshold === t.value ? "#ffffff" : textSecondary, flexShrink: 0 }}>{t.label}</div>
+            <div>
+              <div style={{ fontSize: "13px", fontWeight: "600", color: textPrimary }}>Health Factor {t.label}</div>
+              <div style={{ fontSize: "11px", color: textSecondary }}>{t.desc}</div>
+            </div>
+            {threshold === t.value && (
+              <div style={{ marginLeft: "auto", width: "20px", height: "20px", borderRadius: "50%", background: t.color, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div style={{ margin: "16px 20px 0", background: cardBg, borderRadius: "12px", padding: "20px", border: `1px solid ${cardBorder}` }}>
+        <div style={{ fontSize: "14px", fontWeight: "700", color: textPrimary, marginBottom: "14px" }}>Your Details</div>
+        <div style={{ fontSize: "12px", color: textSecondary, marginBottom: "6px" }}>Email address</div>
+        <input
+          type="email"
+          placeholder="your@email.com"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          style={{ width: "100%", padding: "12px", borderRadius: "8px", border: `1px solid ${inputBorder}`, fontSize: "14px", marginBottom: "12px", boxSizing: "border-box", outline: "none", background: inputBg, color: textPrimary }}
+        />
+        <div style={{ fontSize: "12px", color: textSecondary, marginBottom: "6px" }}>Wallet address to monitor</div>
+        <input
+          type="text"
+          placeholder="0x... (optional — add later)"
+          value={wallet}
+          onChange={(e) => setWallet(e.target.value)}
+          style={{ width: "100%", padding: "12px", borderRadius: "8px", border: `1px solid ${inputBorder}`, fontSize: "13px", marginBottom: "16px", boxSizing: "border-box", outline: "none", background: inputBg, color: textPrimary, fontFamily: "monospace" }}
+        />
+        <button
+          onClick={handleUpgrade}
+          style={{ width: "100%", padding: "14px", borderRadius: "8px", background: "linear-gradient(135deg, #3b82f6, #1d4ed8)", color: "white", fontSize: "15px", fontWeight: "700", border: "none", cursor: "pointer" }}
+        >
+          {upgrading ? "Redirecting to checkout..." : "Get Alerts — £4.99/month ⚡"}
+        </button>
+        <div style={{ fontSize: "11px", color: textSecondary, textAlign: "center", marginTop: "8px" }}>Cancel anytime. No contracts.</div>
+      </div>
+
+      <div style={{ margin: "16px 20px 0", background: cardBg, borderRadius: "12px", padding: "20px", border: `1px solid ${cardBorder}` }}>
+        <div style={{ fontSize: "13px", fontWeight: "700", color: textSecondary, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "12px" }}>What you get ⚡</div>
+        {[
+          "Instant email when health factor hits your threshold",
+          "Monitors Aave v3 and Compound v3",
+          "Check every 5 minutes — react before liquidation",
+          "Add up to 3 wallet addresses",
+          "Cancel anytime",
+        ].map((feature) => (
+          <div key={feature} style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "10px" }}>
+            <div style={{ width: "18px", height: "18px", borderRadius: "50%", background: dark ? "#1e3a5f" : "#eff6ff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+            </div>
+            <span style={{ fontSize: "13px", color: dark ? "#d1d5db" : "#374151" }}>{feature}</span>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ padding: "16px 20px", textAlign: "center" }}>
+        <div style={{ fontSize: "10px", color: dark ? "#4b5563" : "#9ca3af", marginBottom: "8px" }}>Not financial advice</div>
+        <div style={{ display: "flex", justifyContent: "center", gap: "20px" }}>
+          <a href="/terms" style={{ fontSize: "12px", fontWeight: "600", color: dark ? "#6b7280" : "#4b5563", textDecoration: "none" }}>Terms of Service</a>
+          <a href="/privacy" style={{ fontSize: "12px", fontWeight: "600", color: dark ? "#6b7280" : "#4b5563", textDecoration: "none" }}>Privacy Policy</a>
+        </div>
+      </div>
+
+      <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: navBg, borderTop: `1px solid ${navBorder}`, display: "flex", padding: "8px 0", zIndex: 100 }}>
+        <a href="/" style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "3px", textDecoration: "none", padding: "4px 0" }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={dark ? "#6b7280" : "#9ca3af"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+            <polyline points="9 22 9 12 15 12 15 22"/>
+          </svg>
+          <span style={{ fontSize: "10px", fontWeight: "600", color: dark ? "#6b7280" : "#9ca3af" }}>Market</span>
+        </a>
+        <a href="/positions" style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "3px", textDecoration: "none", padding: "4px 0" }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={dark ? "#6b7280" : "#9ca3af"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="2" y="3" width="20" height="14" rx="2"/>
+            <path d="M8 21h8M12 17v4"/>
+          </svg>
+          <span style={{ fontSize: "10px", fontWeight: "600", color: dark ? "#6b7280" : "#9ca3af" }}>Positions</span>
+        </a>
+        <a href="/alerts" style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "3px", textDecoration: "none", padding: "4px 0" }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+            <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+          </svg>
+          <span style={{ fontSize: "10px", fontWeight: "600", color: "#3b82f6" }}>Alerts</span>
+        </a>
+      </div>
+
+    </main>
   );
 }
-
