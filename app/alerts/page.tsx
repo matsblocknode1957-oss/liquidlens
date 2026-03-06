@@ -54,11 +54,11 @@ export default function AlertsPage() {
         body: JSON.stringify({ email, wallet, threshold }),
       });
       const { sessionId } = await res.json();
-      const { loadStripe } = await import("@stripe/stripe-js");
-      const stripe = await loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
-      if (!stripe) throw new Error("Stripe failed to load");
-      const { error: stripeError } = await stripe.redirectToCheckout({ sessionId });
-      if (stripeError) throw stripeError;
+      const stripeJs = await import("@stripe/stripe-js");
+const stripe = await stripeJs.loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
+if (!stripe) throw new Error("Stripe failed to load");
+const result = await (stripe as any).redirectToCheckout({ sessionId });
+if (result.error) throw result.error;
     } catch (err: any) {
       setError(err.message ?? "Something went wrong. Please try again.");
       setLoading(false);
