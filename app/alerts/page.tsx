@@ -33,10 +33,7 @@ export default function AlertsPage() {
       });
       const data = await res.json();
       
-if (data.sessionId) {
-  const stripe = await import("@stripe/stripe-js").then(m => m.loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!));
-  await stripe?.redirectToCheckout({ sessionId: data.sessionId });
-}
+if (data.url) window.location.href = data.url;
     } catch (e) {
       setUpgrading(false);
     }
