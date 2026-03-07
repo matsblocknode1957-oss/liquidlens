@@ -11,12 +11,12 @@ export async function POST(request: Request) {
   try {
     const { email, wallet, threshold } = await request.json();
 
-    if (!email || !wallet) {
-      return NextResponse.json(
-        { error: "Email and wallet are required" },
-        { status: 400 }
-      );
-    }
+    if (!email) {
+  return NextResponse.json(
+    { error: "Email is required" },
+    { status: 400 }
+  );
+}
 
     const session = await getStripe().checkout.sessions.create({
       mode: "subscription",
