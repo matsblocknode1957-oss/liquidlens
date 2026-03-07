@@ -42,7 +42,9 @@ export async function POST(request: Request) {
       cancel_url: `${process.env.NEXT_PUBLIC_SITE_URL}/alerts?cancelled=true`,
     });
 
-    return NextResponse.json({ url: session.url });
+    console.log("Session URL:", session.url);
+console.log("Session ID:", session.id);
+return NextResponse.json({ url: session.url });
   } catch (err: any) {
     console.error("Checkout session error:", err);
     return NextResponse.json({ error: err.message }, { status: 500 });
