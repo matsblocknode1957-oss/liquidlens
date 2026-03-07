@@ -38,8 +38,8 @@ export async function POST(request: Request) {
           health_factor_threshold: String(threshold ?? 1.5),
         },
       },
-      success_url: `${process.env.NEXT_PUBLIC_SITE_URL}/alerts?success=true`,
-      cancel_url: `${process.env.NEXT_PUBLIC_SITE_URL}/alerts?cancelled=true`,
+      success_url: `${process.env.NEXT_PUBLIC_URL}/alerts?success=true`,
+      cancel_url: `${process.env.NEXT_PUBLIC_URL}/alerts?cancelled=true`,
     });
 
     console.log("Session URL:", session.url);
