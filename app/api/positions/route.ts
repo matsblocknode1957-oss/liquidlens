@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(req: NextRequest) {
   const wallet = req.nextUrl.searchParams.get("wallet")?.toLowerCase();
-console.log("API hit - wallet:", wallet);
+  console.log("API hit - wallet:", wallet);
+
+  if (!wallet) {
     return NextResponse.json({ error: "No wallet provided" }, { status: 400 });
   }
 
