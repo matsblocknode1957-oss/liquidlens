@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
     }`;
 
     const res = await fetch(
-      `https://gateway.thegraph.com/api/${process.env.NEXT_PUBLIC_GRAPH_API_KEY}/subgraphs/id/GQFbb95cE6d8mV989mL5figjaGaKCQB3xqYrr1bRyXqF`,
+      `https://gateway.thegraph.com/api/${process.env.GRAPH_API_KEY}/subgraphs/id/GQFbb95cE6d8mV989mL5figjaGaKCQB3xqYrr1bRyXqF`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
