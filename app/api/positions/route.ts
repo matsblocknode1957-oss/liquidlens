@@ -13,35 +13,24 @@ export async function GET(req: NextRequest) {
     const query = `{
       user(id: "${wallet}") {
         id
-        borrowedReservesCount
-        collateralReserve: reserves(where: { currentATokenBalance_gt: "0" }) {
+        healthFactor
+        totalCollateralUSD
+        totalDebtUSD
+        reserves(where: { currentATokenBalance_gt: "0" }) {
           currentATokenBalance
-          reserve {
-            symbol
-            decimals
-            baseLTVasCollateral
-            reserveLiquidationThreshold
-            price {
-              priceInEth
-            }
-          }
-        }
-        borrowReserve: reserves(where: { currentTotalDebt_gt: "0" }) {
           currentTotalDebt
           reserve {
             symbol
             decimals
-            price {
-              priceInEth
-            }
+            reserveLiquidationThreshold
+            underlyingAsset
           }
         }
-        healthFactor
       }
     }`;
 
     const res = await fetch(
-      `https://gateway.thegraph.com/api/${process.env.NEXT_PUBLIC_GRAPH_API_KEY}/subgraphs/id/Cd2gEDVeqnjBn1hSeqFMitw8Q1iiyV9FYUZkLNRcL57s`,
+      `https://gateway.thegraph.com/api/${process.env.NEXT_PUBLIC_GRAPH_API_KEY}/subgraphs/id/GQFbb95cE6d8mV989mL5figjaGaKCQB3xqYrr1bRyXqF`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -52,34 +41,26 @@ export async function GET(req: NextRequest) {
     const json = await res.json();
     console.log("Aave response:", JSON.stringify(json));
 
+    if (json?.errors) {
+      console.error("Subgraph errors:", json.errors);
+    }
+
     const user = json?.data?.user;
 
     if (user && user.healthFactor && user.healthFactor !== "0") {
       const hf = parseFloat(user.healthFactor) / 1e18;
+      const collateralUSD = parseFloat(user.totalCollateralUSD || "0");
+      const debtUSD = parseFloat(user.totalDebtUSD || "0");
 
-      let collateralUSD = 0;
-      let collateralAsset = "Unknown";
-      user.collateralReserve?.forEach((r: any) => {
-        const balance = parseFloat(r.currentATokenBalance) / Math.pow(10, r.reserve.decimals);
-        const priceEth = parseFloat(r.reserve.price.priceInEth) / 1e18;
-        collateralUSD += balance * priceEth * 3000;
-        collateralAsset = r.reserve.symbol;
-      });
-
-      let debtUSD = 0;
-      user.borrowReserve?.forEach((r: any) => {
-        const debt = parseFloat(r.currentTotalDebt) / Math.pow(10, r.reserve.decimals);
-        const priceEth = parseFloat(r.reserve.price.priceInEth) / 1e18;
-        debtUSD += debt * priceEth * 3000;
-      });
-
-      const liquidationThreshold = user.collateralReserve?.[0]
-        ? parseFloat(user.collateralReserve[0].reserve.reserveLiquidationThreshold) / 10000
+      const liquidationThreshold = user.reserves?.[0]
+        ? parseFloat(user.reserves[0].reserve.reserveLiquidationThreshold) / 10000
         : 0.8;
 
       const liquidationPrice = collateralUSD > 0 && debtUSD > 0
-        ? debtUSD / (collateralUSD / 3000 * liquidationThreshold)
+        ? (debtUSD / (liquidationThreshold * collateralUSD)) * 3000
         : 0;
+
+      const collateralAsset = user.reserves?.[0]?.reserve?.symbol ?? "Unknown";
 
       positions.push({
         protocol: "Aave v3",
