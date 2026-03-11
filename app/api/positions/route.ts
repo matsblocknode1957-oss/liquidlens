@@ -1,3 +1,4 @@
+
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(req: NextRequest) {
@@ -35,7 +36,7 @@ export async function GET(req: NextRequest) {
     }`;
 
     const res = await fetch(
-      `https://gateway.thegraph.com/api/${process.env.GRAPH_API_KEY}/subgraphs/id/HB1Z2EAw4rtPRYVb2Nz8QGFLHCpym6ByBX6vbCViuE9F`,
+      `https://api.thegraph.com/subgraphs/name/aave/protocol-v3`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -45,10 +46,6 @@ export async function GET(req: NextRequest) {
 
     const json = await res.json();
     console.log("Aave response:", JSON.stringify(json));
-
-    if (json?.errors) {
-      console.error("Subgraph errors:", json.errors);
-    }
 
     const user = json?.data?.user;
 
