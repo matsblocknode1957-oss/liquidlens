@@ -49,13 +49,16 @@ async function fetchAaveData() {
   `;
 
   try {
+    console.log("Fetching Aave data from:", AAVE_ENDPOINT);
     const [dataRes, liqRes] = await Promise.all([
       fetch(AAVE_ENDPOINT, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query }) }),
       fetch(AAVE_ENDPOINT, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query: liqQuery }) }),
     ]);
 
+    console.log("Aave response status:", dataRes.status);
     const data = await dataRes.json();
     const liqData = await liqRes.json();
+    console.log("Aave data:", JSON.stringify(data).slice(0, 200));
 
     const atRiskUsers = data?.data?.atRisk ?? [];
     const atRiskTotal = atRiskUsers.reduce((sum: number, u: any) => sum + parseFloat(u.totalDebtUSD || "0"), 0);
@@ -86,7 +89,8 @@ async function fetchAaveData() {
       },
       liquidations,
     };
-  } catch {
+  } catch (err) {
+    console.error("Aave fetch error:", err);
     return {
       protocol: {
         name: "Aave v3", icon: "👻",
@@ -111,12 +115,17 @@ async function fetchCompoundData() {
   `;
 
   try {
+    console.log("Fetching Compound data...");
     const res = await fetch(COMPOUND_ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ query }),
     });
+
+    console.log("Compound response status:", res.status);
     const data = await res.json();
+    console.log("Compound data:", JSON.stringify(data).slice(0, 200));
+
     const markets = data?.data?.markets ?? [];
     const totalBorrowed = markets.reduce((sum: number, m: any) => sum + parseFloat(m.totalBorrowUSD || "0"), 0);
     const atRisk = totalBorrowed * 0.023;
@@ -130,7 +139,8 @@ async function fetchCompoundData() {
       liquidations24h: data?.data?.liquidates?.length ?? 3,
       ...risk,
     };
-  } catch {
+  } catch (err) {
+    console.error("Compound fetch error:", err);
     return {
       name: "Compound v3", icon: "🏦",
       totalBorrowed: "$1.8B", atRisk: "$42M", atRiskRaw: 42_000_000,
@@ -156,4 +166,3 @@ export async function GET() {
     liquidations: aaveResult.liquidations,
   });
 }
-
