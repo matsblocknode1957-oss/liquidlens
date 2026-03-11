@@ -1,4 +1,3 @@
-
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(req: NextRequest) {
@@ -15,15 +14,13 @@ export async function GET(req: NextRequest) {
     const query = `{
       user(id: "${wallet}") {
         id
-        borrowedReservesCount
         collateralReserve: reserves(where: { currentATokenBalance_gt: "0" }) {
           currentATokenBalance
           reserve {
             symbol
             decimals
-            baseLTVasCollateral
             reserveLiquidationThreshold
-            priceInUSD
+            price { priceInEth }
           }
         }
         borrowReserve: reserves(where: { currentTotalDebt_gt: "0" }) {
@@ -31,7 +28,7 @@ export async function GET(req: NextRequest) {
           reserve {
             symbol
             decimals
-            priceInUSD
+            price { priceInEth }
           }
         }
       }
@@ -56,21 +53,24 @@ export async function GET(req: NextRequest) {
     const user = json?.data?.user;
 
     if (user) {
+      const ETH_PRICE = 3000;
       let collateralUSD = 0;
       let collateralAsset = "Unknown";
+      let collateralPriceEth = 1;
 
       user.collateralReserve?.forEach((r: any) => {
         const balance = parseFloat(r.currentATokenBalance) / Math.pow(10, r.reserve.decimals);
-        const priceUSD = parseFloat(r.reserve.priceInUSD || "0");
-        collateralUSD += balance * priceUSD;
+        const priceEth = parseFloat(r.reserve.price.priceInEth) / 1e18;
+        collateralUSD += balance * priceEth * ETH_PRICE;
         collateralAsset = r.reserve.symbol;
+        collateralPriceEth = priceEth;
       });
 
       let debtUSD = 0;
       user.borrowReserve?.forEach((r: any) => {
         const debt = parseFloat(r.currentTotalDebt) / Math.pow(10, r.reserve.decimals);
-        const priceUSD = parseFloat(r.reserve.priceInUSD || "0");
-        debtUSD += debt * priceUSD;
+        const priceEth = parseFloat(r.reserve.price.priceInEth) / 1e18;
+        debtUSD += debt * priceEth * ETH_PRICE;
       });
 
       if (collateralUSD > 0 && debtUSD > 0) {
@@ -79,7 +79,8 @@ export async function GET(req: NextRequest) {
           : 0.8;
 
         const hf = (collateralUSD * liquidationThreshold) / debtUSD;
-        const liquidationPrice = debtUSD / (liquidationThreshold * (collateralUSD / (parseFloat(user.collateralReserve?.[0]?.reserve?.priceInUSD || "1"))));
+        const collateralAmount = collateralUSD / (collateralPriceEth * ETH_PRICE);
+        const liquidationPrice = debtUSD / (collateralAmount * liquidationThreshold);
 
         positions.push({
           protocol: "Aave v3",
