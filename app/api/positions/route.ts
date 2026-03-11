@@ -12,82 +12,25 @@ export async function GET(req: NextRequest) {
   const positions: any[] = [];
 
   try {
-    const query = `{
-      user(id: "${wallet}") {
-        id
-        collateralReserve: reserves(where: { currentATokenBalance_gt: "0" }) {
-          currentATokenBalance
-          reserve {
-            symbol
-            decimals
-            reserveLiquidationThreshold
-            price { priceInEth }
-          }
-        }
-        borrowReserve: reserves(where: { currentTotalDebt_gt: "0" }) {
-          currentTotalDebt
-          reserve {
-            symbol
-            decimals
-            price { priceInEth }
-          }
-        }
-      }
-    }`;
-
     const res = await fetch(
-      `https://api.thegraph.com/subgraphs/name/aave/protocol-v3`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query }),
-      }
+      `https://aave-api-v2.aave.com/data/users/${wallet}`,
+      { headers: { "Content-Type": "application/json" } }
     );
 
     const json = await res.json();
-    console.log("Aave response:", JSON.stringify(json));
+    console.log("Aave response:", JSON.stringify(json).slice(0, 500));
 
-    const user = json?.data?.user;
+    const v3 = json?.v3?.find((m: any) => m.chainId === 1);
 
-    if (user) {
-      const ETH_PRICE = 3000;
-      let collateralUSD = 0;
-      let collateralAsset = "Unknown";
-      let collateralPriceEth = 1;
-
-      user.collateralReserve?.forEach((r: any) => {
-        const balance = parseFloat(r.currentATokenBalance) / Math.pow(10, r.reserve.decimals);
-        const priceEth = parseFloat(r.reserve.price.priceInEth) / 1e18;
-        collateralUSD += balance * priceEth * ETH_PRICE;
-        collateralAsset = r.reserve.symbol;
-        collateralPriceEth = priceEth;
+    if (v3 && parseFloat(v3.healthFactor) > 0) {
+      positions.push({
+        protocol: "Aave v3",
+        healthFactor: parseFloat(v3.healthFactor),
+        collateralUSD: Math.round(parseFloat(v3.totalCollateralUSD || "0")),
+        debtUSD: Math.round(parseFloat(v3.totalBorrowsUSD || "0")),
+        liquidationPrice: 0,
+        collateralAsset: v3.userReserves?.[0]?.reserve?.symbol ?? "Unknown",
       });
-
-      let debtUSD = 0;
-      user.borrowReserve?.forEach((r: any) => {
-        const debt = parseFloat(r.currentTotalDebt) / Math.pow(10, r.reserve.decimals);
-        const priceEth = parseFloat(r.reserve.price.priceInEth) / 1e18;
-        debtUSD += debt * priceEth * ETH_PRICE;
-      });
-
-      if (collateralUSD > 0 && debtUSD > 0) {
-        const liquidationThreshold = user.collateralReserve?.[0]
-          ? parseFloat(user.collateralReserve[0].reserve.reserveLiquidationThreshold) / 10000
-          : 0.8;
-
-        const hf = (collateralUSD * liquidationThreshold) / debtUSD;
-        const collateralAmount = collateralUSD / (collateralPriceEth * ETH_PRICE);
-        const liquidationPrice = debtUSD / (collateralAmount * liquidationThreshold);
-
-        positions.push({
-          protocol: "Aave v3",
-          healthFactor: hf,
-          collateralUSD: Math.round(collateralUSD),
-          debtUSD: Math.round(debtUSD),
-          liquidationPrice: Math.round(liquidationPrice),
-          collateralAsset,
-        });
-      }
     }
   } catch (e) {
     console.error("Aave fetch error:", e);
