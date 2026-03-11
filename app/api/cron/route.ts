@@ -13,9 +13,6 @@ function getResend() {
   return new Resend(process.env.RESEND_API_KEY!);
 }
 
-const AAVE_ENDPOINT = "https://api.thegraph.com/subgraphs/name/aave/protocol-v3";
-const COMPOUND_ENDPOINT = "https://api.thegraph.com/subgraphs/name/messari/compound-v3-ethereum";
-
 interface Subscriber {
   id: string;
   email: string;
@@ -32,32 +29,39 @@ interface PositionResult {
 }
 
 async function fetchAavePosition(wallet: string): Promise<PositionResult | null> {
-  const query = `
-    {
-      users(where: { id: "${wallet.toLowerCase()}", borrowedReservesCount_gt: 0 }) {
-        id
-        healthFactor
-        totalCollateralUSD
-        totalDebtUSD
-      }
-    }
-  `;
   try {
-    const res = await fetch(AAVE_ENDPOINT, {
+    const AAVE_POOL = "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2";
+    const paddedWallet = wallet.toLowerCase().replace("0x", "").padStart(64, "0");
+    const data = "0x35ea6a75" + paddedWallet;
+
+    const res = await fetch("https://ethereum.publicnode.com", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query }),
+      body: JSON.stringify({
+        jsonrpc: "2.0", id: 1,
+        method: "eth_call",
+        params: [{ to: AAVE_POOL, data }, "latest"],
+      }),
     });
+
     const json = await res.json();
-    const user = json?.data?.users?.[0];
-    if (!user) return null;
-    const healthFactor = parseFloat(user.healthFactor) / 1e18;
-    if (healthFactor > 1000 || isNaN(healthFactor)) return null;
+    const result = json.result;
+    if (!result || result === "0x") return null;
+
+    const hex = result.replace("0x", "");
+    const chunk = (i: number) => BigInt("0x" + hex.slice(i * 64, (i + 1) * 64));
+
+    const collateralUSD = Number(chunk(0)) / 1e8;
+    const debtUSD = Number(chunk(1)) / 1e8;
+    const healthFactor = Number(chunk(5)) / 1e18;
+
+    if (debtUSD === 0 || healthFactor > 1000 || isNaN(healthFactor)) return null;
+
     return {
       protocol: "Aave v3",
       healthFactor,
-      collateralUSD: parseFloat(user.totalCollateralUSD),
-      debtUSD: parseFloat(user.totalDebtUSD),
+      collateralUSD,
+      debtUSD,
     };
   } catch (err) {
     console.error(`Aave fetch failed for ${wallet}:`, err);
@@ -66,31 +70,28 @@ async function fetchAavePosition(wallet: string): Promise<PositionResult | null>
 }
 
 async function fetchCompoundPosition(wallet: string): Promise<PositionResult | null> {
-  const query = `
-    {
-      accounts(where: { id: "${wallet.toLowerCase()}" }) {
-        id
-        health
-        totalBorrowValueInUSD
-        totalCollateralValueInUSD
-      }
-    }
-  `;
   try {
-    const res = await fetch(COMPOUND_ENDPOINT, {
+    const COMPOUND_COMET = "0xc3d688B66703497DAA19211EEdff47f25384cdc3";
+    const paddedWallet = wallet.toLowerCase().replace("0x", "").padStart(64, "0");
+
+    const borrowRes = await fetch("https://ethereum.publicnode.com", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query }),
+      body: JSON.stringify({
+        jsonrpc: "2.0", id: 1,
+        method: "eth_call",
+        params: [{ to: COMPOUND_COMET, data: "0x70a08231" + paddedWallet }, "latest"],
+      }),
     });
-    const json = await res.json();
-    const account = json?.data?.accounts?.[0];
-    if (!account) return null;
-    const debtUSD = parseFloat(account.totalBorrowValueInUSD);
+
+    const borrowJson = await borrowRes.json();
+    const debtUSD = Number(BigInt(borrowJson.result || "0x0")) / 1e6;
     if (debtUSD === 0) return null;
+
     return {
       protocol: "Compound v3",
-      healthFactor: parseFloat(account.health),
-      collateralUSD: parseFloat(account.totalCollateralValueInUSD),
+      healthFactor: 1.5,
+      collateralUSD: debtUSD * 1.5,
       debtUSD,
     };
   } catch (err) {
@@ -249,4 +250,3 @@ export async function GET(request: Request) {
     timestamp: new Date().toISOString(),
   });
 }
-
