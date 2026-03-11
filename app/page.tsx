@@ -211,26 +211,7 @@ export default function Home() {
   }
 };
 
-      const updatedProtocols = [aaveResult.protocol, compoundData, MAKER_DATA];
-      setProtocols(updatedProtocols);
-
-      const totalRaw = updatedProtocols.reduce((sum, p) => sum + p.atRiskRaw, 0);
-      setTotalAtRisk(formatUSD(totalRaw));
-      setTotalLiquidations(updatedProtocols.reduce((sum, p) => sum + p.liquidations24h, 0));
-
-      if (aaveResult.liquidations.length > 0) {
-        setRecentLiquidations(aaveResult.liquidations);
-      }
-
-      const now = new Date();
-      setLastUpdated(now.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }));
-    } catch {
-      const now = new Date();
-      setLastUpdated(now.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }));
-    } finally {
-      setLoading(false);
-    }
-  };
+    
 
   useEffect(() => {
     fetchData();
