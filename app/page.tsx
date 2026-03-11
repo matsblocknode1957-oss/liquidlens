@@ -191,11 +191,25 @@ export default function Home() {
   }, []);
 
   const fetchData = async () => {
-    try {
-      const [aaveResult, compoundData] = await Promise.all([
-        fetchAaveData(),
-        fetchCompoundData(),
-      ]);
+  try {
+    const res = await fetch("/api/data");
+    const json = await res.json();
+
+    setProtocols(json.protocols);
+    if (json.liquidations.length > 0) setRecentLiquidations(json.liquidations);
+
+    const totalRaw = json.protocols.reduce((sum: number, p: any) => sum + p.atRiskRaw, 0);
+    setTotalAtRisk(formatUSD(totalRaw));
+    setTotalLiquidations(json.protocols.reduce((sum: number, p: any) => sum + p.liquidations24h, 0));
+
+    const now = new Date();
+    setLastUpdated(now.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }));
+  } catch {
+    // keep existing state
+  } finally {
+    setLoading(false);
+  }
+};
 
       const updatedProtocols = [aaveResult.protocol, compoundData, MAKER_DATA];
       setProtocols(updatedProtocols);
