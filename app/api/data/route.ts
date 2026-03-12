@@ -97,6 +97,7 @@ async function fetchMakerData() {
       headers: { Accept: "application/json" },
     });
     const data = await res.json();
+    console.log("DefiLlama Sky keys:", JSON.stringify(data?.currentChainTvls));
     const borrowed = data?.currentChainTvls?.["Ethereum-borrowed"] ?? 0;
     const totalBorrowed = typeof borrowed === "number" ? borrowed : 0;
     const atRisk = totalBorrowed * 0.045;
