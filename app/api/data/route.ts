@@ -15,16 +15,59 @@ function formatUSD(value: number): string {
   return `$${value.toFixed(0)}`;
 }
 
+
 async function fetchAaveData() {
+  const AAVE_ENDPOINT = `https://gateway.thegraph.com/api/${process.env.GRAPH_API_KEY}/subgraphs/id/Cd2gEDVeqnjBn1hSeqFMitw8Q1iiyV9FYUZkLNRcL87g`;
+
+  const liqQuery = `
+    {
+      liquidationCalls(
+        first: 4
+        orderBy: timestamp
+        orderDirection: desc
+      ) {
+        user { id }
+        collateralReserve { symbol }
+        principalAmountInUSD
+        timestamp
+      }
+    }
+  `;
+
   try {
-    const res = await fetch("https://api.llama.fi/protocol/aave-v3", {
-      headers: { Accept: "application/json" },
-    });
-    const data = await res.json();
-    const borrowed = data?.currentChainTvls?.["Ethereum-borrowed"] ?? 0;
+    const [llamaRes, liqRes] = await Promise.all([
+      fetch("https://api.llama.fi/protocol/aave-v3", {
+        headers: { Accept: "application/json" },
+      }),
+      fetch(AAVE_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: liqQuery }),
+      }),
+    ]);
+
+    const llamaData = await llamaRes.json();
+    const liqData = await liqRes.json();
+
+    const borrowed = llamaData?.currentChainTvls?.["Ethereum-borrowed"] ?? 0;
     const totalBorrowed = typeof borrowed === "number" ? borrowed : 0;
     const atRiskTotal = totalBorrowed * 0.045;
     const risk = getRiskLevel(atRiskTotal, totalBorrowed > 0 ? totalBorrowed : 4_200_000_000);
+
+    const liquidations = (liqData?.data?.liquidationCalls ?? []).map((l: any) => {
+      const wallet = l.user?.id ?? "0x0000";
+      const shortWallet = `${wallet.slice(0, 6)}...${wallet.slice(-4)}`;
+      const secondsAgo = Math.floor(Date.now() / 1000) - parseInt(l.timestamp || "0");
+      const timeAgo = secondsAgo < 3600 ? `${Math.floor(secondsAgo / 60)}m ago` : `${Math.floor(secondsAgo / 3600)}h ago`;
+      return {
+        wallet: shortWallet,
+        protocol: "Aave v3",
+        asset: l.collateralReserve?.symbol ?? "ETH",
+        amount: formatUSD(parseFloat(l.principalAmountInUSD || "0")),
+        time: timeAgo,
+      };
+    });
+
     return {
       protocol: {
         name: "Aave v3",
@@ -32,10 +75,10 @@ async function fetchAaveData() {
         totalBorrowed: totalBorrowed > 0 ? formatUSD(totalBorrowed) : "$4.2B",
         atRisk: atRiskTotal > 0 ? formatUSD(atRiskTotal) : "$180M",
         atRiskRaw: atRiskTotal > 0 ? atRiskTotal : 180_000_000,
-        liquidations24h: 0,
+        liquidations24h: liquidations.length,
         ...risk,
       },
-      liquidations: [],
+      liquidations,
     };
   } catch (err) {
     console.error("Aave fetch error:", err);
