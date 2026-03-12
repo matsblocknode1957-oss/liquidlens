@@ -11,7 +11,7 @@ export default async function handler() {
 
   const data = await res.json();
   console.log("Cron result:", JSON.stringify(data));
-  return data;
+  return;
 }
 
 export const config: Config = {
