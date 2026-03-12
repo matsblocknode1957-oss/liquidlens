@@ -98,8 +98,8 @@ async function fetchMakerData() {
     });
     const data = await res.json();
     console.log("DefiLlama Sky keys:", JSON.stringify(data?.currentChainTvls));
-    const borrowed = data?.currentChainTvls?.["Ethereum-borrowed"] ?? 0;
-    const totalBorrowed = typeof borrowed === "number" ? borrowed : 0;
+    const tvl = data?.currentChainTvls?.["Ethereum"] ?? 0;
+const totalBorrowed = typeof tvl === "number" ? tvl * 0.65 : 0;
     const atRisk = totalBorrowed * 0.045;
     const risk = getRiskLevel(atRisk, totalBorrowed > 0 ? totalBorrowed : 2_100_000_000);
     return {
