@@ -147,5 +147,4 @@ async function fetchAaveData() {
       },
       liquidations: [],
     };
-}
-}
+  }
