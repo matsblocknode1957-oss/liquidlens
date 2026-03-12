@@ -93,7 +93,7 @@ async function fetchCompoundData() {
 
 async function fetchMakerData() {
   try {
-    const res = await fetch("https://api.llama.fi/protocol/makerdao", {
+    const res = await fetch("https://api.llama.fi/protocol/maker", {
       headers: { Accept: "application/json" },
     });
     const data = await res.json();
