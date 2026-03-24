@@ -130,7 +130,7 @@ async function sendAlertEmail(email: string, wallet: string, positions: Position
   const worstHF = Math.min(...positions.map((p) => p.healthFactor));
 
   await getResend().emails.send({
-    from: "LiquidLens Alerts <alerts@liquidlens.uk>",
+    from: "LiquidLens Alerts <alerts@fintechcheck.uk>",
     to: email,
     subject: `⚠️ Alert: Health factor ${worstHF.toFixed(2)} — ${shortWallet}`,
     html: `
