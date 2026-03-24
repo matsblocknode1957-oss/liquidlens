@@ -284,10 +284,31 @@ export default function Home() {
                   <div style={{ fontSize: "11px", color: textSecondary }}>{p.totalBorrowed} borrowed</div>
                 </div>
               </div>
-              <div style={{ textAlign: "right" }}>
-                <div style={{ fontSize: "12px", fontWeight: "700", color: "#f97316" }}>{p.atRisk} at risk</div>
-                <span style={{ fontSize: "10px", fontWeight: "600", padding: "2px 8px", borderRadius: "20px", background: p.riskBg, color: p.riskColor }}>{p.riskLevel}</span>
-              </div>
+              <div key={p.name} style={{ padding: "14px 16px", borderBottom: i < protocols.length - 1 ? `1px solid ${cardBorder}` : "none" }}>
+  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
+    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+      <div style={{ fontSize: "24px" }}>{p.icon}</div>
+      <div>
+        <div style={{ fontSize: "13px", fontWeight: "700", color: textPrimary }}>{p.name}</div>
+        <div style={{ fontSize: "11px", color: textSecondary }}>{p.totalBorrowed} borrowed</div>
+      </div>
+    </div>
+    <div style={{ textAlign: "right" }}>
+      <div style={{ fontSize: "12px", fontWeight: "700", color: "#f97316" }}>{p.atRisk} at risk</div>
+      <span style={{ fontSize: "10px", fontWeight: "600", padding: "2px 8px", borderRadius: "20px", background: p.riskBg, color: p.riskColor }}>{p.riskLevel}</span>
+    </div>
+  </div>
+  <div style={{ background: dark ? "#1e2a40" : "#f3f4f6", borderRadius: "4px", height: "6px", overflow: "hidden" }}>
+    <div style={{
+      height: "100%",
+      borderRadius: "4px",
+      background: p.riskColor,
+      width: p.riskLevel === "Low" ? "25%" : p.riskLevel === "Medium" ? "60%" : "90%",
+      transition: "width 0.5s ease",
+    }} />
+  </div>
+</div>
+
             </div>
           ))}
         </div>
