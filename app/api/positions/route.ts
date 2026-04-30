@@ -5,11 +5,19 @@ const UI_POOL_DATA = "0x91c0eA31b49B69Ea18607702c5d9aC360bf3dE7d";
 const POOL_ADDRESSES_PROVIDER = "0x2f39d218133AFaB8F2B819B1066c7E434Ad94E9e";
 const ETH_PRICE_USD = 3000;
 
+const CHAINLINK_ETH_USD = "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419";
+const CHAINLINK_WBTC_USD = "0xF4030086522a5bEEa4988F8cA5B36dbC97BeE88b";
+
 const ABI_getUserAccountData = "0x35ea6a75";
 const ABI_balanceOf = "0x70a08231";
+const ABI_latestRoundData = "0xfeaf968c";
+
+function getRpcUrl() {
+  return process.env.ALCHEMY_RPC_URL ?? "https://ethereum.publicnode.com";
+}
 
 async function rpcCall(method: string, params: any[]) {
-  const res = await fetch("https://ethereum.publicnode.com", {
+  const res = await fetch(getRpcUrl(), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
@@ -26,6 +34,49 @@ function hexToBigInt(hex: string) {
   return BigInt(hex);
 }
 
+interface ChainlinkPrices {
+  ETH_USD?: number;
+  WBTC_USD?: number;
+}
+
+async function fetchChainlinkPrice(feedAddress: string): Promise<number | null> {
+  const result = await rpcCall("eth_call", [
+    { to: feedAddress, data: ABI_latestRoundData },
+    "latest",
+  ]);
+
+  if (!result || result === "0x") return null;
+
+  const hex = result.replace("0x", "");
+  // latestRoundData returns: roundId, answer, startedAt, updatedAt, answeredInRound
+  // answer is at slot 1, with 8 decimals
+  const answer = BigInt("0x" + hex.slice(64, 128));
+  return Number(answer) / 1e8;
+}
+
+async function fetchChainlinkPrices(): Promise<ChainlinkPrices> {
+  const [ethResult, wbtcResult] = await Promise.allSettled([
+    fetchChainlinkPrice(CHAINLINK_ETH_USD),
+    fetchChainlinkPrice(CHAINLINK_WBTC_USD),
+  ]);
+
+  const prices: ChainlinkPrices = {};
+
+  if (ethResult.status === "fulfilled" && ethResult.value !== null) {
+    prices.ETH_USD = ethResult.value;
+  } else {
+    console.error("Chainlink ETH/USD fetch failed:", ethResult.status === "rejected" ? ethResult.reason : "null result");
+  }
+
+  if (wbtcResult.status === "fulfilled" && wbtcResult.value !== null) {
+    prices.WBTC_USD = wbtcResult.value;
+  } else {
+    console.error("Chainlink WBTC/USD fetch failed:", wbtcResult.status === "rejected" ? wbtcResult.reason : "null result");
+  }
+
+  return prices;
+}
+
 export async function GET(req: NextRequest) {
   const wallet = req.nextUrl.searchParams.get("wallet")?.toLowerCase();
   console.log("API hit - wallet:", wallet);
@@ -35,6 +86,10 @@ export async function GET(req: NextRequest) {
   }
 
   const positions: any[] = [];
+
+  const [chainlinkPrices] = await Promise.allSettled([fetchChainlinkPrices()]);
+  const prices: ChainlinkPrices =
+    chainlinkPrices.status === "fulfilled" ? chainlinkPrices.value : {};
 
   try {
     // Call getUserAccountData(address) on Aave Pool
@@ -82,5 +137,5 @@ export async function GET(req: NextRequest) {
     console.error("Aave fetch error:", e);
   }
 
-  return NextResponse.json({ positions });
+  return NextResponse.json({ positions, chainlinkPrices: prices });
 }
