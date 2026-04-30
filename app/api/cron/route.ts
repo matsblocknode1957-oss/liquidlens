@@ -28,6 +28,32 @@ interface PositionResult {
   debtUSD: number;
 }
 
+async function fetchChainlinkEthPrice(): Promise<number | null> {
+  try {
+    const CHAINLINK_ETH_USD = "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419";
+    const rpcUrl = process.env.ALCHEMY_RPC_URL ?? "https://ethereum.publicnode.com";
+    const res = await fetch(rpcUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0", id: 1,
+        method: "eth_call",
+        params: [{ to: CHAINLINK_ETH_USD, data: "0xfeaf968c" }, "latest"],
+      }),
+    });
+    const json = await res.json();
+    const result = json.result;
+    if (!result || result === "0x") return null;
+    const hex = result.replace("0x", "");
+    // latestRoundData: roundId, answer, startedAt, updatedAt, answeredInRound
+    const answer = BigInt("0x" + hex.slice(64, 128));
+    return Number(answer) / 1e8;
+  } catch (err) {
+    console.error("Chainlink ETH/USD fetch failed:", err);
+    return null;
+  }
+}
+
 async function fetchAavePosition(wallet: string): Promise<PositionResult | null> {
   try {
     const AAVE_POOL = "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2";
@@ -114,7 +140,7 @@ function healthColor(hf: number): string {
   return "#ef4444";
 }
 
-async function sendAlertEmail(email: string, wallet: string, positions: PositionResult[], threshold: number) {
+async function sendAlertEmail(email: string, wallet: string, positions: PositionResult[], threshold: number, ethPriceUSD: number | null) {
   const positionRows = positions.map((p) => `
     <tr>
       <td style="padding:10px 16px;border-bottom:1px solid #1e2a40;">${p.protocol}</td>
@@ -161,6 +187,16 @@ async function sendAlertEmail(email: string, wallet: string, positions: Position
               <tbody>${positionRows}</tbody>
             </table>
           </div>
+          ${ethPriceUSD !== null ? `
+          <div style="background:#0d1628;border:1px solid #1e2a40;border-radius:12px;padding:16px 20px;margin-bottom:24px;display:flex;align-items:center;justify-content:space-between;">
+            <div>
+              <div style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:4px;">Chainlink Verified Price</div>
+              <div style="font-size:18px;font-weight:800;color:#f9fafb;">ETH/USD $${ethPriceUSD.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+            </div>
+            <a href="https://chain.link" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:999px;background:#375BD2;font-size:11px;font-weight:600;color:#ffffff;text-decoration:none;">
+              ⬡ Chainlink
+            </a>
+          </div>` : ""}
           <div style="text-align:center;margin-bottom:32px;">
             <a href="https://liquidlens.uk/positions?wallet=${wallet}" style="display:inline-block;background:#3b82f6;color:#fff;text-decoration:none;padding:14px 28px;border-radius:10px;font-weight:700;font-size:15px;">
               View your positions →
@@ -210,6 +246,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ message: "No active subscribers", checked: 0 });
   }
 
+  const ethPriceUSD = await fetchChainlinkEthPrice();
+
   let alertsSent = 0;
   let positionsChecked = 0;
   const BATCH_SIZE = 10;
@@ -230,7 +268,7 @@ export async function GET(request: Request) {
           await saveSnapshot(sub.wallet_address, positions);
           const atRisk = positions.filter((p) => p.healthFactor < sub.health_factor_threshold);
           if (atRisk.length > 0) {
-            await sendAlertEmail(sub.email, sub.wallet_address, atRisk, sub.health_factor_threshold);
+            await sendAlertEmail(sub.email, sub.wallet_address, atRisk, sub.health_factor_threshold, ethPriceUSD);
             alertsSent++;
           }
         } catch (err) {

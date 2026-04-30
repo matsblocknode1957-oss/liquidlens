@@ -191,7 +191,13 @@ return  (
         </Link>
 
         <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: "10px", color: dark ? "#4b5563" : "#9ca3af", marginBottom: "8px" }}>Not financial advice</div>
+          <div style={{ fontSize: "10px", color: dark ? "#4b5563" : "#9ca3af", marginBottom: "10px" }}>Not financial advice</div>
+          <div style={{ marginBottom: "12px" }}>
+            <a href="https://chain.link" target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "6px 12px", borderRadius: "999px", background: "#375BD2", fontSize: "12px", fontWeight: 600, color: "#ffffff", textDecoration: "none" }}>
+              <span style={{ fontSize: "11px" }}>⬡</span>
+              Powered by Chainlink
+            </a>
+          </div>
           <div style={{ display: "flex", justifyContent: "center", gap: "20px" }}>
             <a href="/terms" style={{ fontSize: "12px", fontWeight: "600", color: dark ? "#6b7280" : "#4b5563", textDecoration: "none" }}>Terms of Service</a>
             <a href="/privacy" style={{ fontSize: "12px", fontWeight: "600", color: dark ? "#6b7280" : "#4b5563", textDecoration: "none" }}>Privacy Policy</a>
