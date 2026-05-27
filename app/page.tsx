@@ -43,6 +43,7 @@ export default function Home() {
     { wallet: "0x88bc...1d3a", protocol: "MakerDAO", asset: "ETH", amount: "$31,000", time: "23m ago" },
     { wallet: "0x5c9e...8b4f", protocol: "Aave v3", asset: "LINK", amount: "$12,400", time: "41m ago" },
   ]);
+  const [isLiveLiquidations, setIsLiveLiquidations] = useState(false);
   const [totalAtRisk, setTotalAtRisk] = useState("$317M");
   const [totalLiquidations, setTotalLiquidations] = useState(24);
   const [loading, setLoading] = useState(true);
@@ -57,7 +58,10 @@ export default function Home() {
       const res = await fetch("/api/data");
       const json = await res.json();
       setProtocols(json.protocols);
-      if (json.liquidations.length > 0) setRecentLiquidations(json.liquidations);
+      if (json.liquidations.length > 0) {
+        setRecentLiquidations(json.liquidations);
+        setIsLiveLiquidations(true);
+      }
       const totalRaw = json.protocols.reduce((sum: number, p: any) => sum + p.atRiskRaw, 0);
       setTotalAtRisk(formatUSD(totalRaw));
       setTotalLiquidations(json.protocols.reduce((sum: number, p: any) => sum + p.liquidations24h, 0));
@@ -162,8 +166,14 @@ return  (
         <div style={{ background: cardBg, borderRadius: "12px", border: `1px solid ${cardBorder}`, overflow: "hidden" }}>
           <div style={{ padding: "12px 16px", borderBottom: `1px solid ${cardBorder}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div style={{ fontSize: "11px", fontWeight: "700", color: textSecondary, textTransform: "uppercase", letterSpacing: "0.6px" }}>Recent Liquidations</div>
-            <div style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#ef4444" }} />
+            <div style={{ width: "8px", height: "8px", borderRadius: "50%", background: isLiveLiquidations ? "#10b981" : "#6b7280" }} />
           </div>
+          {!loading && !isLiveLiquidations && (
+            <div style={{ padding: "8px 16px", background: dark ? "#1a1f2e" : "#f3f4f6", borderBottom: `1px solid ${cardBorder}`, display: "flex", alignItems: "center", gap: "6px" }}>
+              <span style={{ fontSize: "10px" }}>⚠️</span>
+              <span style={{ fontSize: "11px", color: textSecondary }}>Sample Data — live liquidations unavailable</span>
+            </div>
+          )}
           {recentLiquidations.map((liq, i) => (
             <div key={i} style={{ padding: "12px 16px", borderBottom: i < recentLiquidations.length - 1 ? `1px solid ${cardBorder}` : "none", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
