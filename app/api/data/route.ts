@@ -10,6 +10,11 @@ const DAI_ADDRESS = "0x6B175474E89094C44Da98b954EedeAC495271d0F";
 // MakerDAO Dog contract (liquidation events MCD_DOG)
 const MAKER_DOG = "0x135954d155898D42C90D2a57824C690e0c7BEf1b";
 
+// Chainlink Price Feed addresses (Ethereum mainnet)
+const CHAINLINK_ETH_USD = "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419";
+const CHAINLINK_BTC_USD = "0xF4030086522a5bEEa4988F8cA5B36dbC97BeE88c";
+const LATEST_ROUND_DATA = "0xfeaf968c"; // latestRoundData() selector
+
 function getRiskLevel(atRiskUSD: number, totalBorrowedUSD: number) {
   const ratio = totalBorrowedUSD > 0 ? atRiskUSD / totalBorrowedUSD : 0;
   if (ratio < 0.03) return { riskLevel: "Low", riskColor: "#10b981", riskBg: "#052e16" };
@@ -32,6 +37,18 @@ async function rpcCall(method: string, params: any[]) {
   });
   const data = await res.json();
   return data.result;
+}
+
+async function getChainlinkPrice(feedAddress: string): Promise<number> {
+  const result: string = await rpcCall("eth_call", [
+    { to: feedAddress, data: LATEST_ROUND_DATA },
+    "latest",
+  ]);
+  // latestRoundData returns: roundId (32B), answer (32B), startedAt, updatedAt, answeredInRound
+  // answer is at offset 32 bytes (64 hex chars) after the "0x" prefix
+  const answerHex = result.slice(2 + 64, 2 + 128);
+  const answer = BigInt("0x" + answerHex);
+  return Number(answer) / 1e8;
 }
 
 async function fetchAaveData() {
@@ -171,13 +188,16 @@ async function fetchMakerData() {
 }
 
 export async function GET() {
-  const [aaveResult, compoundData, makerData] = await Promise.all([
+  const [aaveResult, compoundData, makerData, ethPrice, btcPrice] = await Promise.all([
     fetchAaveData(),
     fetchCompoundData(),
     fetchMakerData(),
+    getChainlinkPrice(CHAINLINK_ETH_USD).catch(() => 0),
+    getChainlinkPrice(CHAINLINK_BTC_USD).catch(() => 0),
   ]);
   return NextResponse.json({
     protocols: [aaveResult.protocol, compoundData, makerData],
     liquidations: aaveResult.liquidations,
+    chainlinkPrices: { ETH: ethPrice, BTC: btcPrice, source: "Chainlink Price Feeds" },
   });
 }

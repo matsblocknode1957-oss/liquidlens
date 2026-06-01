@@ -22,6 +22,12 @@ interface Liquidation {
   time: string;
 }
 
+interface ChainlinkPrices {
+  ETH: number;
+  BTC: number;
+  source: string;
+}
+
 function formatUSD(value: number): string {
   if (value >= 1_000_000_000) return `$${(value / 1_000_000_000).toFixed(1)}B`;
   if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(0)}M`;
@@ -47,6 +53,7 @@ export default function Home() {
   const [totalAtRisk, setTotalAtRisk] = useState("$317M");
   const [totalLiquidations, setTotalLiquidations] = useState(24);
   const [loading, setLoading] = useState(true);
+  const [chainlinkPrices, setChainlinkPrices] = useState<ChainlinkPrices | null>(null);
 
   useEffect(() => {
     const stored = localStorage.getItem("liquidlens-dark");
@@ -65,6 +72,7 @@ export default function Home() {
       const totalRaw = json.protocols.reduce((sum: number, p: any) => sum + p.atRiskRaw, 0);
       setTotalAtRisk(formatUSD(totalRaw));
       setTotalLiquidations(json.protocols.reduce((sum: number, p: any) => sum + p.liquidations24h, 0));
+      if (json.chainlinkPrices) setChainlinkPrices(json.chainlinkPrices);
       const now = new Date();
       setLastUpdated(now.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }));
     } catch {
@@ -128,6 +136,29 @@ return  (
           <div style={{ fontSize: "10px", color: textSecondary, marginTop: "2px" }}>across all protocols</div>
         </div>
       </div>
+
+      {chainlinkPrices && (chainlinkPrices.ETH > 0 || chainlinkPrices.BTC > 0) && (
+        <div style={{ margin: "10px 16px 0", background: cardBg, borderRadius: "12px", border: `1px solid ${cardBorder}`, padding: "10px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", gap: "20px" }}>
+            {chainlinkPrices.ETH > 0 && (
+              <div>
+                <span style={{ fontSize: "10px", fontWeight: "700", color: textSecondary, textTransform: "uppercase", letterSpacing: "0.5px" }}>ETH </span>
+                <span style={{ fontSize: "13px", fontWeight: "700", color: textPrimary }}>${chainlinkPrices.ETH.toLocaleString("en-US", { maximumFractionDigits: 0 })}</span>
+              </div>
+            )}
+            {chainlinkPrices.BTC > 0 && (
+              <div>
+                <span style={{ fontSize: "10px", fontWeight: "700", color: textSecondary, textTransform: "uppercase", letterSpacing: "0.5px" }}>BTC </span>
+                <span style={{ fontSize: "13px", fontWeight: "700", color: textPrimary }}>${chainlinkPrices.BTC.toLocaleString("en-US", { maximumFractionDigits: 0 })}</span>
+              </div>
+            )}
+          </div>
+          <a href="https://chain.link" target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "10px", fontWeight: "600", color: "#375BD2", textDecoration: "none" }}>
+            <span style={{ fontSize: "10px" }}>⬡</span>
+            Chainlink
+          </a>
+        </div>
+      )}
 
       <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: "12px" }}>
 
