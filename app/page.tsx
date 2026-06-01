@@ -43,13 +43,7 @@ export default function Home() {
     { name: "Compound v3", icon: "🏦", totalBorrowed: "...", atRisk: "...", atRiskRaw: 0, liquidations24h: 0, riskLevel: "Low", riskColor: "#10b981", riskBg: "#052e16" },
     { name: "MakerDAO", icon: "🔷", totalBorrowed: "...", atRisk: "...", atRiskRaw: 0, liquidations24h: 0, riskLevel: "Low", riskColor: "#10b981", riskBg: "#052e16" },
   ]);
-  const [recentLiquidations, setRecentLiquidations] = useState<Liquidation[]>([
-    { wallet: "0x3f4a...9c2b", protocol: "Aave v3", asset: "ETH", amount: "$84,200", time: "4m ago" },
-    { wallet: "0xa12d...4e7f", protocol: "Compound", asset: "BTC", amount: "$210,500", time: "11m ago" },
-    { wallet: "0x88bc...1d3a", protocol: "MakerDAO", asset: "ETH", amount: "$31,000", time: "23m ago" },
-    { wallet: "0x5c9e...8b4f", protocol: "Aave v3", asset: "LINK", amount: "$12,400", time: "41m ago" },
-  ]);
-  const [isLiveLiquidations, setIsLiveLiquidations] = useState(false);
+  const [recentLiquidations, setRecentLiquidations] = useState<Liquidation[]>([]);
   const [totalAtRisk, setTotalAtRisk] = useState("$317M");
   const [totalLiquidations, setTotalLiquidations] = useState(24);
   const [loading, setLoading] = useState(true);
@@ -65,10 +59,7 @@ export default function Home() {
       const res = await fetch("/api/data");
       const json = await res.json();
       setProtocols(json.protocols);
-      if (json.liquidations.length > 0) {
-        setRecentLiquidations(json.liquidations);
-        setIsLiveLiquidations(true);
-      }
+      setRecentLiquidations(json.liquidations);
       const totalRaw = json.protocols.reduce((sum: number, p: any) => sum + p.atRiskRaw, 0);
       setTotalAtRisk(formatUSD(totalRaw));
       setTotalLiquidations(json.protocols.reduce((sum: number, p: any) => sum + p.liquidations24h, 0));
@@ -195,14 +186,12 @@ return  (
         </div>
 
         <div style={{ background: cardBg, borderRadius: "12px", border: `1px solid ${cardBorder}`, overflow: "hidden" }}>
-          <div style={{ padding: "12px 16px", borderBottom: `1px solid ${cardBorder}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ padding: "12px 16px", borderBottom: `1px solid ${cardBorder}` }}>
             <div style={{ fontSize: "11px", fontWeight: "700", color: textSecondary, textTransform: "uppercase", letterSpacing: "0.6px" }}>Recent Liquidations</div>
-            <div style={{ width: "8px", height: "8px", borderRadius: "50%", background: isLiveLiquidations ? "#10b981" : "#6b7280" }} />
           </div>
-          {!loading && !isLiveLiquidations && (
-            <div style={{ padding: "8px 16px", background: dark ? "#1a1f2e" : "#f3f4f6", borderBottom: `1px solid ${cardBorder}`, display: "flex", alignItems: "center", gap: "6px" }}>
-              <span style={{ fontSize: "10px" }}>⚠️</span>
-              <span style={{ fontSize: "11px", color: textSecondary }}>Sample Data — live liquidations unavailable</span>
+          {!loading && recentLiquidations.length === 0 && (
+            <div style={{ padding: "20px 16px", textAlign: "center", fontSize: "13px", color: textSecondary }}>
+              No liquidations in the last 24 hours — market is calm 🟢
             </div>
           )}
           {recentLiquidations.map((liq, i) => (
