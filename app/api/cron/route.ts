@@ -98,26 +98,53 @@ async function fetchAavePosition(wallet: string): Promise<PositionResult | null>
 async function fetchCompoundPosition(wallet: string): Promise<PositionResult | null> {
   try {
     const COMPOUND_COMET = "0xc3d688B66703497DAA19211EEdff47f25384cdc3";
+    const rpcUrl = process.env.ALCHEMY_RPC_URL ?? "https://ethereum.publicnode.com";
     const paddedWallet = wallet.toLowerCase().replace("0x", "").padStart(64, "0");
 
-    const borrowRes = await fetch("https://ethereum.publicnode.com", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0", id: 1,
-        method: "eth_call",
-        params: [{ to: COMPOUND_COMET, data: "0x70a08231" + paddedWallet }, "latest"],
+    // borrowBalanceOf(address) = 0x374c49b4  — returns actual debt (0 for non-borrowers)
+    // getBorrowLiquidity(address) = 0x5e96c5ce — returns int256: remaining borrow capacity
+    //   healthFactor = (debt + liquidity) / debt  (liquidity < 0 means liquidatable)
+    const [borrowRes, liquidityRes] = await Promise.all([
+      fetch(rpcUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0", id: 1, method: "eth_call",
+          params: [{ to: COMPOUND_COMET, data: "0x374c49b4" + paddedWallet }, "latest"],
+        }),
       }),
-    });
+      fetch(rpcUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0", id: 2, method: "eth_call",
+          params: [{ to: COMPOUND_COMET, data: "0x5e96c5ce" + paddedWallet }, "latest"],
+        }),
+      }),
+    ]);
 
-    const borrowJson = await borrowRes.json();
+    const [borrowJson, liquidityJson] = await Promise.all([borrowRes.json(), liquidityRes.json()]);
+
     const debtUSD = Number(BigInt(borrowJson.result || "0x0")) / 1e6;
     if (debtUSD === 0) return null;
 
+    let healthFactor = 1.5; // fallback if liquidity call unavailable
+    const liqResult = liquidityJson.result;
+    if (liqResult && liqResult !== "0x") {
+      // int256 two's complement: values above MAX_INT256 are negative
+      const raw = BigInt(liqResult);
+      const TWO_256 = BigInt("0x10000000000000000000000000000000000000000000000000000000000000000");
+      const signed = raw > TWO_256 / 2n - 1n ? raw - TWO_256 : raw;
+      const liquidityUSD = Number(signed) / 1e6;
+      healthFactor = (debtUSD + liquidityUSD) / debtUSD;
+    }
+
+    if (!isFinite(healthFactor) || isNaN(healthFactor) || healthFactor <= 0) return null;
+
     return {
       protocol: "Compound v3",
-      healthFactor: 1.5,
-      collateralUSD: debtUSD * 1.5,
+      healthFactor,
+      collateralUSD: Math.round(debtUSD * healthFactor),
       debtUSD,
     };
   } catch (err) {

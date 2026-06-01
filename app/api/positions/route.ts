@@ -123,12 +123,17 @@ export async function GET(req: NextRequest) {
       console.log({ collateralUSD, debtUSD, liquidationThreshold, healthFactor });
 
       if (debtUSD > 0 && collateralUSD > 0) {
+        const ethPrice = prices.ETH_USD ?? ETH_PRICE_USD;
+        // Price at which collateral value hits the liquidation threshold given current debt
+        const liquidationPrice = Math.round(
+          (debtUSD / (collateralUSD * liquidationThreshold)) * ethPrice
+        );
         positions.push({
           protocol: "Aave v3",
           healthFactor,
           collateralUSD: Math.round(collateralUSD),
           debtUSD: Math.round(debtUSD),
-          liquidationPrice: 0,
+          liquidationPrice,
           collateralAsset: "Mixed",
         });
       }
