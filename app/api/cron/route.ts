@@ -58,7 +58,7 @@ async function fetchAavePosition(wallet: string): Promise<PositionResult | null>
   try {
     const AAVE_POOL = "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2";
     const paddedWallet = wallet.toLowerCase().replace("0x", "").padStart(64, "0");
-    const data = "0x35ea6a75" + paddedWallet;
+    const data = "0xbf92857c" + paddedWallet;
 
     const res = await fetch("https://ethereum.publicnode.com", {
       method: "POST",

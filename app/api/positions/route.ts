@@ -8,7 +8,7 @@ const ETH_PRICE_USD = 3000;
 const CHAINLINK_ETH_USD = "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419";
 const CHAINLINK_WBTC_USD = "0xF4030086522a5bEEa4988F8cA5B36dbC97BeE88b";
 
-const ABI_getUserAccountData = "0x35ea6a75";
+const ABI_getUserAccountData = "0xbf92857c";
 const ABI_balanceOf = "0x70a08231";
 const ABI_latestRoundData = "0xfeaf968c";
 
