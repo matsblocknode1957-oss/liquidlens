@@ -29,14 +29,15 @@ export default function PositionsPage() {
   };
 
   const fetchPositions = async () => {
-    if (!wallet.startsWith("0x") || wallet.length !== 42) {
+    const trimmed = wallet.trim();
+    if (!/^0x[0-9a-fA-F]{40}$/.test(trimmed)) {
       alert("Please enter a valid Ethereum wallet address");
       return;
     }
     setLoading(true);
     setSearched(false);
     try {
-      const res = await fetch(`/api/positions?wallet=${wallet}`);
+      const res = await fetch(`/api/positions?wallet=${trimmed}`);
       const data = await res.json();
       setPositions(data.positions || []);
       setSearched(true);
