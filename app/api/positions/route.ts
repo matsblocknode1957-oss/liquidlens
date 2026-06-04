@@ -11,10 +11,19 @@ const WETH = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2";
 // Liquidation collateral factor for WETH in cUSDCv3
 const COMPOUND_WETH_LIQ_CF = 0.825;
 
+const MAKER_CDP_MANAGER = "0x5ef30b9986345249bc32d8928B7ee64DE9435E39";
+const MAKER_GET_CDPS = "0x36a724Bd100c39f0Ea4D3A20F7097eE01a8fF573";
+const MAKER_VAT = "0x35D1b3F3D7966A1DFe207aa4514C12a259A0492B";
+const MAKER_PROXY_REGISTRY = "0x4678f0a6958e4D2Bc4F1BAF7Bc52E8F3564f3fE4";
+
 const ABI_getUserAccountData = "0xbf92857c";
 const ABI_latestRoundData = "0xfeaf968c";
 const ABI_borrowBalanceOf = "0x374c49b4";
 const ABI_collateralBalanceOf = "0x5c2549ee";
+const ABI_getCdpsAsc = "0x1ce03f38";
+const ABI_vatUrns = "0x2424be5c";
+const ABI_vatIlks = "0xd9638d36";
+const ABI_proxies = "0xc4552791";
 
 function getRpcUrl() {
   return process.env.ALCHEMY_RPC_URL ?? "https://ethereum.publicnode.com";
@@ -155,6 +164,144 @@ async function fetchCompoundPosition(wallet: string, prices: ChainlinkPrices): P
   };
 }
 
+// Decode the (uint256[], address[], bytes32[]) tuple returned by getCdpsAsc.
+// ABI-encodes dynamic arrays with 32-byte offset headers followed by length-prefixed data.
+function decodeCdps(hex: string): Array<{ urn: string; ilk: string }> {
+  const word = (i: number) => BigInt("0x" + hex.slice(i * 64, (i + 1) * 64));
+  const wordNum = (i: number) => Number(word(i));
+
+  // First three words are byte offsets into the data; divide by 32 for word indices.
+  const off1 = wordNum(0) / 32; // ids array header
+  const off2 = wordNum(1) / 32; // urns array header
+  const off3 = wordNum(2) / 32; // ilks array header
+
+  const len = wordNum(off1);
+  const results = [];
+  for (let i = 0; i < len; i++) {
+    // Address is right-aligned in 32 bytes: last 40 hex chars of the word.
+    const urnWord = off2 + 1 + i;
+    const urn = "0x" + hex.slice(urnWord * 64 + 24, urnWord * 64 + 64);
+    // bytes32 is left-aligned: full 64 hex chars.
+    const ilkWord = off3 + 1 + i;
+    const ilk = hex.slice(ilkWord * 64, ilkWord * 64 + 64);
+    results.push({ urn, ilk });
+  }
+  return results;
+}
+
+// Convert a left-aligned bytes32 hex string to its ASCII label, e.g. "ETH-A".
+function ilkToString(ilkHex: string): string {
+  let str = "";
+  for (let i = 0; i < ilkHex.length; i += 2) {
+    const byte = parseInt(ilkHex.slice(i, i + 2), 16);
+    if (byte === 0) break;
+    str += String.fromCharCode(byte);
+  }
+  return str;
+}
+
+async function fetchMakerPosition(wallet: string, prices: ChainlinkPrices): Promise<object | null> {
+  const paddedManager = MAKER_CDP_MANAGER.replace("0x", "").padStart(64, "0");
+  const paddedWallet = wallet.replace("0x", "").padStart(64, "0");
+
+  // CDPs are usually owned by the wallet's DSProxy, not the wallet itself.
+  // Look up the proxy address from the ProxyRegistry, then try getCdpsAsc with
+  // both the proxy and the wallet directly (some users open CDPs without a proxy).
+  const proxyResult = await rpcCall("eth_call", [
+    { to: MAKER_PROXY_REGISTRY, data: ABI_proxies + paddedWallet },
+    "latest",
+  ]);
+  const proxyAddr =
+    proxyResult && proxyResult !== "0x" && proxyResult !== "0x" + "0".repeat(64)
+      ? "0x" + proxyResult.slice(-40)
+      : null;
+  const zeroAddr = "0x0000000000000000000000000000000000000000";
+  const lookupAddrs = [...new Set([proxyAddr, wallet].filter((a): a is string => !!a && a !== zeroAddr))];
+
+  let cdpsResult: string | null = null;
+  for (const addr of lookupAddrs) {
+    const paddedAddr = addr.replace("0x", "").padStart(64, "0");
+    const result = await rpcCall("eth_call", [
+      { to: MAKER_GET_CDPS, data: ABI_getCdpsAsc + paddedManager + paddedAddr },
+      "latest",
+    ]);
+    if (result && result !== "0x" && result.length > 2) {
+      cdpsResult = result;
+      break;
+    }
+  }
+
+  console.log("Maker getCdpsAsc result:", cdpsResult?.slice(0, 66));
+
+  if (!cdpsResult || cdpsResult === "0x") return null;
+
+  const hex = cdpsResult.replace("0x", "");
+  const cdps = decodeCdps(hex).filter(c => ilkToString(c.ilk).startsWith("ETH"));
+  if (cdps.length === 0) return null;
+
+  const ethPrice = prices.ETH_USD ?? ETH_PRICE_USD;
+
+  // Fetch Vat urn state + ilk data for all ETH CDPs in parallel.
+  const resolved = await Promise.all(
+    cdps.map(async cdp => {
+      const paddedIlk = cdp.ilk; // already 64 hex chars (bytes32, left-aligned)
+      const paddedUrn = cdp.urn.replace("0x", "").padStart(64, "0");
+
+      const [urnResult, ilkResult] = await Promise.all([
+        rpcCall("eth_call", [{ to: MAKER_VAT, data: ABI_vatUrns + paddedIlk + paddedUrn }, "latest"]),
+        rpcCall("eth_call", [{ to: MAKER_VAT, data: ABI_vatIlks + paddedIlk }, "latest"]),
+      ]);
+
+      if (!urnResult || urnResult === "0x" || !ilkResult || ilkResult === "0x") return null;
+
+      const urnHex = urnResult.replace("0x", "");
+      const inkBig = BigInt("0x" + urnHex.slice(0, 64));   // collateral [wad]
+      const artBig = BigInt("0x" + urnHex.slice(64, 128)); // normalised debt [wad]
+      if (artBig === 0n) return null;
+
+      const ilkDataHex = ilkResult.replace("0x", "");
+      const rateBig = BigInt("0x" + ilkDataHex.slice(64, 128));  // [ray] stability fee accumulator
+      const spotBig = BigInt("0x" + ilkDataHex.slice(128, 192)); // [ray] price / liquidation ratio
+
+      const inkEth = Number(inkBig) / 1e18;
+      const spotUsd = Number(spotBig) / 1e27;
+      // Actual debt in DAI: art * rate / 1e27 (wad), then / 1e18 for plain units.
+      const debtDai = Number(artBig * rateBig / (10n ** 27n)) / 1e18;
+
+      if (debtDai === 0 || inkEth === 0 || spotUsd === 0) return null;
+
+      // HF = (collateral_value / liq_ratio) / debt, which equals (ink * spot) / (art * rate).
+      const healthFactor = (inkEth * spotUsd) / debtDai;
+      // Derive liquidation ratio from current spot and ETH price, then compute liq price.
+      const liqRatio = ethPrice / spotUsd;
+      const liquidationPrice = Math.round(debtDai * liqRatio / inkEth);
+
+      return {
+        healthFactor,
+        collateralUSD: Math.round(inkEth * ethPrice),
+        debtUSD: Math.round(debtDai),
+        liquidationPrice,
+        collateralAsset: ilkToString(cdp.ilk),
+      };
+    })
+  );
+
+  const valid = resolved.filter((p): p is NonNullable<typeof p> => p !== null);
+  if (valid.length === 0) return null;
+
+  // Surface the most at-risk CDP (lowest health factor).
+  const worst = valid.reduce((a, b) => a.healthFactor < b.healthFactor ? a : b);
+
+  return {
+    protocol: "MakerDAO",
+    healthFactor: worst.healthFactor,
+    collateralUSD: worst.collateralUSD,
+    debtUSD: worst.debtUSD,
+    liquidationPrice: worst.liquidationPrice,
+    collateralAsset: worst.collateralAsset,
+  };
+}
+
 export async function GET(req: NextRequest) {
   const wallet = req.nextUrl.searchParams.get("wallet")?.toLowerCase();
   console.log("API hit - wallet:", wallet);
@@ -167,9 +314,10 @@ export async function GET(req: NextRequest) {
   const prices: ChainlinkPrices =
     chainlinkPrices.status === "fulfilled" ? chainlinkPrices.value : {};
 
-  const [aaveResult, compoundResult] = await Promise.allSettled([
+  const [aaveResult, compoundResult, makerResult] = await Promise.allSettled([
     fetchAavePosition(wallet, prices),
     fetchCompoundPosition(wallet, prices),
+    fetchMakerPosition(wallet, prices),
   ]);
 
   const positions: object[] = [];
@@ -184,6 +332,12 @@ export async function GET(req: NextRequest) {
     positions.push(compoundResult.value);
   } else if (compoundResult.status === "rejected") {
     console.error("Compound fetch error:", compoundResult.reason);
+  }
+
+  if (makerResult.status === "fulfilled" && makerResult.value) {
+    positions.push(makerResult.value);
+  } else if (makerResult.status === "rejected") {
+    console.error("Maker fetch error:", makerResult.reason);
   }
 
   return NextResponse.json({ positions, chainlinkPrices: prices });
