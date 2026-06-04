@@ -14,7 +14,7 @@ const COMPOUND_WETH_LIQ_CF = 0.825;
 const ABI_getUserAccountData = "0xbf92857c";
 const ABI_latestRoundData = "0xfeaf968c";
 const ABI_borrowBalanceOf = "0x374c49b4";
-const ABI_collateralBalanceOf = "0xbde523e2";
+const ABI_collateralBalanceOf = "0x5c2549ee";
 
 function getRpcUrl() {
   return process.env.ALCHEMY_RPC_URL ?? "https://ethereum.publicnode.com";
@@ -27,6 +27,9 @@ async function rpcCall(method: string, params: any[]) {
     body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
   });
   const json = await res.json();
+  if (json.error) {
+    console.error("RPC error:", JSON.stringify(json.error), "params:", JSON.stringify(params));
+  }
   return json.result;
 }
 
@@ -118,7 +121,8 @@ async function fetchCompoundPosition(wallet: string, prices: ChainlinkPrices): P
     rpcCall("eth_call", [{ to: COMPOUND_COMET, data: ABI_collateralBalanceOf + paddedWallet + paddedWeth }, "latest"]),
   ]);
 
-  console.log("Compound borrow result:", borrowResult, "collateral result:", collateralResult);
+  console.log("Compound raw borrowBalance:", borrowResult);
+  console.log("Compound raw collateralBalance:", collateralResult);
 
   if (!borrowResult || borrowResult === "0x") return null;
 
