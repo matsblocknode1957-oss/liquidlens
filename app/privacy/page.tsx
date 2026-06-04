@@ -51,7 +51,7 @@ export default function PrivacyPage() {
     },
     {
       title: "5. Position Monitoring",
-      content: `As a premium subscriber, your wallet address is checked against Aave and Compound subgraphs approximately every 60 seconds. Position snapshots may be stored in our database to track health factor history and determine when alerts should be sent. This data is associated with your email address and wallet address.`,
+      content: `As a premium subscriber, your wallet address is checked against Aave, Compound and MakerDAO subgraphs approximately every 60 seconds. Position snapshots may be stored in our database to track health factor history and determine when alerts should be sent. This data is associated with your email address and wallet address.`,
     },
     {
       title: "6. Third Party Services",

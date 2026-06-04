@@ -6,7 +6,7 @@
 
 ## 1. What is LiquidLens
 
-LiquidLens is a real-time DeFi liquidation risk monitoring platform. It tracks wallet health factors across Aave and Compound, alerts users before their positions reach the liquidation threshold, and logs risk events permanently on-chain using Chainlink Automation.
+LiquidLens is a real-time DeFi liquidation risk monitoring platform. It tracks wallet health factors across Aave, Compound and MakerDAO, alerts users before their positions reach the liquidation threshold, and logs risk events permanently on-chain using Chainlink Automation.
 
 DeFi borrowers supply collateral and take on debt. If the value of that collateral falls — or the value of the borrowed asset rises — their health factor drops. When it hits 1.0, anyone can liquidate their position, seizing collateral at a discount. Most users only find out when it is too late.
 
@@ -32,7 +32,7 @@ The $290M KelpDAO exploit and the chaos that followed illustrate exactly why pas
 
 LiquidLens closes the gap between on-chain risk and user awareness.
 
-**Real-time health factor monitoring.** LiquidLens polls wallet health factors across Aave and Compound continuously. Users set their own alert threshold — for example, triggering a warning when their health factor drops below 1.5.
+**Real-time health factor monitoring.** LiquidLens polls wallet health factors across Aave, Compound and MakerDAO continuously. Users set their own alert threshold — for example, triggering a warning when their health factor drops below 1.5.
 
 **Instant email alerts.** When a monitored wallet crosses the user-defined threshold, LiquidLens sends an email alert immediately. The notification includes the current health factor, the protocol at risk, and a direct link to the position.
 

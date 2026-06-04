@@ -86,7 +86,7 @@ export default function PositionsPage() {
 
       <div style={{ margin: "16px 20px 0", background: cardBg, borderRadius: "12px", padding: "20px", border: `1px solid ${cardBorder}` }}>
         <div style={{ fontSize: "15px", fontWeight: "700", color: textPrimary, marginBottom: "6px" }}>Check Your Positions</div>
-        <div style={{ fontSize: "13px", color: textSecondary, marginBottom: "14px" }}>Enter any Ethereum wallet to see live DeFi health factors across Aave and Compound.</div>
+        <div style={{ fontSize: "13px", color: textSecondary, marginBottom: "14px" }}>Enter any Ethereum wallet to see live DeFi health factors across Aave, Compound and MakerDAO.</div>
         <input
           type="text"
           placeholder="0x... wallet address"
