@@ -95,6 +95,110 @@ async function fetchAavePosition(wallet: string): Promise<PositionResult | null>
   }
 }
 
+async function fetchMakerPosition(wallet: string, ethPriceUSD: number | null): Promise<PositionResult | null> {
+  try {
+    const MAKER_CDP_MANAGER  = "0x5ef30b9986345249bc32d8928B7ee64DE9435E39";
+    const MAKER_GET_CDPS     = "0x36a724Bd100c39f0Ea4D3A20F7097eE01a8fF573";
+    const MAKER_VAT          = "0x35D1b3F3D7966A1DFe207aa4514C12a259A0492B";
+    const MAKER_PROXY_REG    = "0x4678f0a6958e4D2Bc4F1BAF7Bc52E8F3564f3fE4";
+    const rpcUrl = process.env.ALCHEMY_RPC_URL ?? "https://ethereum.publicnode.com";
+
+    const rpc = async (to: string, data: string) => {
+      const res = await fetch(rpcUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_call", params: [{ to, data }, "latest"] }),
+      });
+      const json = await res.json();
+      return json.result as string | null;
+    };
+
+    const paddedWallet  = wallet.toLowerCase().replace("0x", "").padStart(64, "0");
+    const paddedManager = MAKER_CDP_MANAGER.replace("0x", "").padStart(64, "0");
+
+    // Resolve DSProxy; also try the wallet address directly for users without a proxy.
+    const proxyRaw = await rpc(MAKER_PROXY_REG, "0xc4552791" + paddedWallet);
+    const zeroAddr = "0x" + "0".repeat(40);
+    const proxyAddr = proxyRaw && proxyRaw !== "0x" ? "0x" + proxyRaw.slice(-40) : null;
+    const candidates = [...new Set(
+      [proxyAddr, wallet].filter((a): a is string => !!a && a !== zeroAddr)
+    )];
+
+    let cdpsRaw: string | null = null;
+    for (const addr of candidates) {
+      const padded = addr.replace("0x", "").padStart(64, "0");
+      const r = await rpc(MAKER_GET_CDPS, "0x1ce03f38" + paddedManager + padded);
+      if (r && r !== "0x" && r.length > 2) { cdpsRaw = r; break; }
+    }
+    if (!cdpsRaw) return null;
+
+    // Decode (uint256[], address[], bytes32[]) ABI tuple.
+    const hex = cdpsRaw.replace("0x", "");
+    const wordN = (i: number) => Number(BigInt("0x" + hex.slice(i * 64, (i + 1) * 64)));
+    const off1 = wordN(0) / 32, off2 = wordN(1) / 32, off3 = wordN(2) / 32;
+    const len = wordN(off1);
+    if (len === 0) return null;
+
+    const cdps: Array<{ urn: string; ilk: string }> = [];
+    for (let i = 0; i < len; i++) {
+      const urnWord = off2 + 1 + i;
+      const ilkWord = off3 + 1 + i;
+      const urn = "0x" + hex.slice(urnWord * 64 + 24, urnWord * 64 + 64);
+      const ilkHex = hex.slice(ilkWord * 64, ilkWord * 64 + 64);
+      let ilkStr = "";
+      for (let j = 0; j < ilkHex.length; j += 2) {
+        const b = parseInt(ilkHex.slice(j, j + 2), 16);
+        if (!b) break;
+        ilkStr += String.fromCharCode(b);
+      }
+      if (ilkStr.startsWith("ETH")) cdps.push({ urn, ilk: ilkHex });
+    }
+    if (cdps.length === 0) return null;
+
+    const ethPrice = ethPriceUSD ?? 3000;
+
+    const resolved = await Promise.all(cdps.map(async ({ urn, ilk }) => {
+      const paddedUrn = urn.replace("0x", "").padStart(64, "0");
+      const [urnData, ilkData] = await Promise.all([
+        rpc(MAKER_VAT, "0x2424be5c" + ilk + paddedUrn),
+        rpc(MAKER_VAT, "0xd9638d36" + ilk),
+      ]);
+      if (!urnData || urnData === "0x" || !ilkData || ilkData === "0x") return null;
+
+      const urnHex = urnData.replace("0x", "");
+      const inkBig = BigInt("0x" + urnHex.slice(0, 64));
+      const artBig = BigInt("0x" + urnHex.slice(64, 128));
+      if (artBig === 0n) return null;
+
+      const ilkHex2 = ilkData.replace("0x", "");
+      const rateBig = BigInt("0x" + ilkHex2.slice(64, 128));
+      const spotBig = BigInt("0x" + ilkHex2.slice(128, 192));
+
+      const inkEth  = Number(inkBig) / 1e18;
+      const debtDai = Number(artBig * rateBig / (10n ** 27n)) / 1e18;
+      const spotUsd = Number(spotBig) / 1e27;
+      if (debtDai === 0 || inkEth === 0 || spotUsd === 0) return null;
+
+      return {
+        healthFactor: (inkEth * spotUsd) / debtDai,
+        collateralUSD: Math.round(inkEth * ethPrice),
+        debtUSD: Math.round(debtDai),
+      };
+    }));
+
+    const valid = resolved.filter((p): p is NonNullable<typeof p> => p !== null);
+    if (valid.length === 0) return null;
+
+    const worst = valid.reduce((a, b) => a.healthFactor < b.healthFactor ? a : b);
+    if (!isFinite(worst.healthFactor) || isNaN(worst.healthFactor) || worst.healthFactor <= 0) return null;
+
+    return { protocol: "MakerDAO", ...worst };
+  } catch (err) {
+    console.error(`Maker fetch failed for ${wallet}:`, err);
+    return null;
+  }
+}
+
 async function fetchCompoundPosition(wallet: string): Promise<PositionResult | null> {
   try {
     const COMPOUND_COMET = "0xc3d688B66703497DAA19211EEdff47f25384cdc3";
@@ -285,11 +389,12 @@ export async function GET(request: Request) {
       batch.map(async (sub) => {
         if (!sub.wallet_address) return;
         try {
-          const [aavePosition, compoundPosition] = await Promise.all([
+          const [aavePosition, compoundPosition, makerPosition] = await Promise.all([
             fetchAavePosition(sub.wallet_address),
             fetchCompoundPosition(sub.wallet_address),
+            fetchMakerPosition(sub.wallet_address, ethPriceUSD),
           ]);
-          const positions = [aavePosition, compoundPosition].filter(Boolean) as PositionResult[];
+          const positions = [aavePosition, compoundPosition, makerPosition].filter(Boolean) as PositionResult[];
           positionsChecked++;
           if (positions.length === 0) return;
           await saveSnapshot(sub.wallet_address, positions);
