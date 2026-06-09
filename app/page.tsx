@@ -35,6 +35,13 @@ interface FearGreedData {
   yesterdayClassification: string;
 }
 
+interface DepegAlert {
+  coin: string;
+  signal: "HEDGE" | "EXIT";
+  consensus_deviation_bps: number;
+  pegcheck_url: string;
+}
+
 function getFearGreedColors(classification: string): { color: string; bg: string } {
   const c = classification.toLowerCase();
   if (c.includes("extreme fear")) return { color: "#ef4444", bg: "#2d0a0a" };
@@ -65,6 +72,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [chainlinkPrices, setChainlinkPrices] = useState<ChainlinkPrices | null>(null);
   const [fearGreed, setFearGreed] = useState<FearGreedData | null>(null);
+  const [depegAlerts, setDepegAlerts] = useState<DepegAlert[]>([]);
 
   useEffect(() => {
     const stored = localStorage.getItem("liquidlens-dark");
@@ -91,6 +99,12 @@ export default function Home() {
     try {
       const fgRes = await fetch("/api/fear-greed");
       setFearGreed(await fgRes.json());
+    } catch {
+      // keep existing state
+    }
+    try {
+      const daRes = await fetch("/api/depeg-status");
+      setDepegAlerts(await daRes.json());
     } catch {
       // keep existing state
     }
@@ -207,6 +221,38 @@ return  (
             </div>
           </div>
         )}
+
+        {depegAlerts.map((alert) => {
+          const isExit = alert.signal === "EXIT";
+          return (
+            <div key={alert.coin} style={{
+              background: isExit ? (dark ? "#2d0a0a" : "#fef2f2") : (dark ? "#2d1f00" : "#fffbeb"),
+              border: `1px solid ${isExit ? "#ef4444" : "#f59e0b"}`,
+              borderRadius: "10px",
+              padding: "12px 14px",
+              display: "flex",
+              alignItems: "flex-start",
+              justifyContent: "space-between",
+              gap: "10px",
+            }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: "12px", fontWeight: "700", color: isExit ? "#ef4444" : "#f59e0b", marginBottom: "3px" }}>
+                  ⚠️ {alert.coin} showing {alert.signal} signal on PegCheck — {alert.consensus_deviation_bps} bps deviation detected.
+                </div>
+                <div style={{ fontSize: "11px", color: textSecondary }}>
+                  Stablecoin risk may impact DeFi collateral.
+                </div>
+              </div>
+              <a href="https://pegcheck.uk" target="_blank" rel="noopener noreferrer" style={{
+                fontSize: "11px", fontWeight: "600",
+                color: isExit ? "#ef4444" : "#f59e0b",
+                textDecoration: "none", whiteSpace: "nowrap", paddingTop: "1px",
+              }}>
+                View on PegCheck →
+              </a>
+            </div>
+          );
+        })}
 
         <div style={{ background: cardBg, borderRadius: "12px", border: `1px solid ${cardBorder}`, overflow: "hidden" }}>
           <div style={{ padding: "12px 16px", borderBottom: `1px solid ${cardBorder}` }}>
