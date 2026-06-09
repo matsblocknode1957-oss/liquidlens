@@ -28,6 +28,22 @@ interface ChainlinkPrices {
   source: string;
 }
 
+interface FearGreedData {
+  score: number;
+  classification: string;
+  yesterdayScore: number;
+  yesterdayClassification: string;
+}
+
+function getFearGreedColors(classification: string): { color: string; bg: string } {
+  const c = classification.toLowerCase();
+  if (c.includes("extreme fear")) return { color: "#ef4444", bg: "#2d0a0a" };
+  if (c.includes("fear")) return { color: "#f97316", bg: "#2d1a00" };
+  if (c.includes("extreme greed")) return { color: "#22c55e", bg: "#052e16" };
+  if (c.includes("greed")) return { color: "#10b981", bg: "#042616" };
+  return { color: "#9ca3af", bg: "#111827" };
+}
+
 function formatUSD(value: number): string {
   if (value >= 1_000_000_000) return `$${(value / 1_000_000_000).toFixed(1)}B`;
   if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(0)}M`;
@@ -48,6 +64,7 @@ export default function Home() {
   const [totalLiquidations, setTotalLiquidations] = useState(24);
   const [loading, setLoading] = useState(true);
   const [chainlinkPrices, setChainlinkPrices] = useState<ChainlinkPrices | null>(null);
+  const [fearGreed, setFearGreed] = useState<FearGreedData | null>(null);
 
   useEffect(() => {
     const stored = localStorage.getItem("liquidlens-dark");
@@ -70,6 +87,12 @@ export default function Home() {
       // keep existing state
     } finally {
       setLoading(false);
+    }
+    try {
+      const fgRes = await fetch("/api/fear-greed");
+      setFearGreed(await fgRes.json());
+    } catch {
+      // keep existing state
     }
   };
 
@@ -94,6 +117,9 @@ export default function Home() {
   const textSecondary = dark ? "#6b7280" : "#9ca3af";
   const navBg = dark ? "#0d1628" : "#ffffff";
   const navBorder = dark ? "#1e2a40" : "#eaecf0";
+  const fgColors = fearGreed ? getFearGreedColors(fearGreed.classification) : null;
+  const fgYestColors = fearGreed ? getFearGreedColors(fearGreed.yesterdayClassification) : null;
+  const fgDelta = fearGreed ? fearGreed.score - fearGreed.yesterdayScore : 0;
 return  (
     <main style={{ fontFamily: "'Segoe UI', sans-serif", background: bg, minHeight: "100vh", paddingBottom: "70px", transition: "background 0.2s ease" }}>
 
@@ -152,6 +178,35 @@ return  (
       )}
 
       <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: "12px" }}>
+
+        {fearGreed && fgColors && fgYestColors && (
+          <div style={{ background: cardBg, borderRadius: "12px", border: `1px solid ${cardBorder}`, padding: "16px" }}>
+            <div style={{ fontSize: "11px", fontWeight: "700", color: textSecondary, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: "12px" }}>Fear & Greed Index</div>
+            <div style={{ display: "flex", gap: "14px", alignItems: "center", marginBottom: "12px" }}>
+              <div style={{ width: "64px", height: "64px", borderRadius: "50%", background: fgColors.bg, border: `3px solid ${fgColors.color}`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <div style={{ fontSize: "20px", fontWeight: "800", color: fgColors.color, lineHeight: "1" }}>{fearGreed.score}</div>
+                <div style={{ fontSize: "9px", color: fgColors.color, opacity: 0.8 }}>/100</div>
+              </div>
+              <div>
+                <div style={{ fontSize: "17px", fontWeight: "700", color: fgColors.color, marginBottom: "4px" }}>{fearGreed.classification}</div>
+                <div style={{ fontSize: "11px", color: textSecondary }}>
+                  Yesterday:{" "}
+                  <span style={{ color: fgYestColors.color, fontWeight: "600" }}>{fearGreed.yesterdayScore}</span>
+                  {" "}
+                  <span style={{ color: fgDelta > 0 ? "#22c55e" : fgDelta < 0 ? "#ef4444" : textSecondary, fontWeight: "600" }}>
+                    {fgDelta > 0 ? `↑${fgDelta}` : fgDelta < 0 ? `↓${Math.abs(fgDelta)}` : "→"}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div style={{ background: dark ? "#1e2a40" : "#f3f4f6", borderRadius: "4px", height: "6px", overflow: "hidden", marginBottom: "10px" }}>
+              <div style={{ height: "100%", borderRadius: "4px", background: fgColors.color, width: `${fearGreed.score}%`, transition: "width 0.6s ease" }} />
+            </div>
+            <div style={{ fontSize: "10px", color: textSecondary, fontStyle: "italic" }}>
+              High Greed = overleveraged market = elevated liquidation risk
+            </div>
+          </div>
+        )}
 
         <div style={{ background: cardBg, borderRadius: "12px", border: `1px solid ${cardBorder}`, overflow: "hidden" }}>
           <div style={{ padding: "12px 16px", borderBottom: `1px solid ${cardBorder}` }}>
