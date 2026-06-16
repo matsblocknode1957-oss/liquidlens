@@ -19,6 +19,8 @@ interface Subscriber {
   wallet_address: string | null;
   health_factor_threshold: number;
   status: string;
+  unsubscribe_token: string;
+  alerts_enabled: boolean;
 }
 
 interface PositionResult {
@@ -60,6 +62,7 @@ async function fetchAavePosition(wallet: string): Promise<PositionResult | null>
     const paddedWallet = wallet.toLowerCase().replace("0x", "").padStart(64, "0");
     const data = "0xbf92857c" + paddedWallet;
 
+    console.log(`[aave] Calling getUserAccountData for ${wallet}`);
     const res = await fetch("https://ethereum.publicnode.com", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -72,7 +75,13 @@ async function fetchAavePosition(wallet: string): Promise<PositionResult | null>
 
     const json = await res.json();
     const result = json.result;
-    if (!result || result === "0x") return null;
+    console.log(`[aave] RPC result for ${wallet}: ${result?.slice(0, 66) ?? "null"}${result?.length > 66 ? "..." : ""}`);
+    if (json.error) console.error(`[aave] RPC error for ${wallet}:`, json.error);
+
+    if (!result || result === "0x") {
+      console.log(`[aave] Empty result for ${wallet}, returning null`);
+      return null;
+    }
 
     const hex = result.replace("0x", "");
     const chunk = (i: number) => BigInt("0x" + hex.slice(i * 64, (i + 1) * 64));
@@ -81,7 +90,16 @@ async function fetchAavePosition(wallet: string): Promise<PositionResult | null>
     const debtUSD = Number(chunk(1)) / 1e8;
     const healthFactor = Number(chunk(5)) / 1e18;
 
-    if (debtUSD === 0 || healthFactor > 1000 || isNaN(healthFactor)) return null;
+    console.log(`[aave] ${wallet} — collateralUSD: ${collateralUSD}, debtUSD: ${debtUSD}, healthFactor: ${healthFactor}`);
+
+    if (debtUSD === 0) {
+      console.log(`[aave] ${wallet} — debtUSD is 0, no active borrow, returning null`);
+      return null;
+    }
+    if (healthFactor > 1000 || isNaN(healthFactor)) {
+      console.log(`[aave] ${wallet} — healthFactor ${healthFactor} out of range, returning null`);
+      return null;
+    }
 
     return {
       protocol: "Aave v3",
@@ -271,7 +289,7 @@ function healthColor(hf: number): string {
   return "#ef4444";
 }
 
-async function sendAlertEmail(email: string, wallet: string, positions: PositionResult[], threshold: number, ethPriceUSD: number | null) {
+async function sendAlertEmail(email: string, wallet: string, positions: PositionResult[], threshold: number, ethPriceUSD: number | null, unsubscribeToken: string) {
   const positionRows = positions.map((p) => `
     <tr>
       <td style="padding:10px 16px;border-bottom:1px solid #1e2a40;">${p.protocol}</td>
@@ -335,6 +353,8 @@ async function sendAlertEmail(email: string, wallet: string, positions: Position
           </div>
           <div style="font-size:12px;color:#6b7280;text-align:center;border-top:1px solid #1e2a40;padding-top:20px;">
             Not financial advice. · <a href="https://liquidlens.uk/terms" style="color:#6b7280;">Terms</a> · <a href="https://liquidlens.uk/privacy" style="color:#6b7280;">Privacy</a> · LiquidLens v1.0
+            <br /><br />
+            <a href="https://liquidlens.uk/api/unsubscribe?token=${unsubscribeToken}" style="color:#6b7280;">Unsubscribe from alerts</a>
           </div>
         </div>
       </body>
@@ -363,21 +383,32 @@ export async function GET(request: Request) {
 
   const supabase = getSupabase();
 
+  console.log("[cron] Starting alert run");
+
   const { data: subscribers, error: subError } = await supabase
     .from("subscribers")
-    .select("id, email, wallet_address, health_factor_threshold, status")
+    .select("id, email, wallet_address, health_factor_threshold, status, unsubscribe_token, alerts_enabled")
     .eq("status", "active")
+    .eq("alerts_enabled", true)
     .not("wallet_address", "is", null);
 
   if (subError) {
+    console.error("[cron] Supabase subscriber query failed:", subError);
     return NextResponse.json({ error: subError.message }, { status: 500 });
   }
+
+  console.log(`[cron] Found ${subscribers?.length ?? 0} active subscriber(s) with wallet addresses`);
 
   if (!subscribers || subscribers.length === 0) {
     return NextResponse.json({ message: "No active subscribers", checked: 0 });
   }
 
+  for (const sub of subscribers) {
+    console.log(`[cron] Subscriber: ${sub.email} | wallet: ${sub.wallet_address} | threshold: ${sub.health_factor_threshold} | status: ${sub.status}`);
+  }
+
   const ethPriceUSD = await fetchChainlinkEthPrice();
+  console.log(`[cron] ETH price: ${ethPriceUSD !== null ? `$${ethPriceUSD}` : "unavailable"}`);
 
   let alertsSent = 0;
   let positionsChecked = 0;
@@ -388,23 +419,42 @@ export async function GET(request: Request) {
     await Promise.all(
       batch.map(async (sub) => {
         if (!sub.wallet_address) return;
+        console.log(`[cron] Fetching positions for ${sub.email} (${sub.wallet_address})`);
         try {
           const [aavePosition, compoundPosition, makerPosition] = await Promise.all([
             fetchAavePosition(sub.wallet_address),
             fetchCompoundPosition(sub.wallet_address),
             fetchMakerPosition(sub.wallet_address, ethPriceUSD),
           ]);
+
+          console.log(`[cron] ${sub.wallet_address} — Aave: ${aavePosition ? `HF=${aavePosition.healthFactor.toFixed(4)}` : "null"}`);
+          console.log(`[cron] ${sub.wallet_address} — Compound: ${compoundPosition ? `HF=${compoundPosition.healthFactor.toFixed(4)}` : "null"}`);
+          console.log(`[cron] ${sub.wallet_address} — Maker: ${makerPosition ? `HF=${makerPosition.healthFactor.toFixed(4)}` : "null"}`);
+
           const positions = [aavePosition, compoundPosition, makerPosition].filter(Boolean) as PositionResult[];
           positionsChecked++;
-          if (positions.length === 0) return;
+
+          if (positions.length === 0) {
+            console.log(`[cron] ${sub.wallet_address} — no positions found, skipping`);
+            return;
+          }
+
           await saveSnapshot(sub.wallet_address, positions);
+
           const atRisk = positions.filter((p) => p.healthFactor < sub.health_factor_threshold);
+          console.log(`[cron] ${sub.wallet_address} — threshold: ${sub.health_factor_threshold}, at-risk positions: ${atRisk.length}/${positions.length}`);
+          for (const p of atRisk) {
+            console.log(`[cron]   -> ${p.protocol} HF=${p.healthFactor.toFixed(4)} < ${sub.health_factor_threshold}`);
+          }
+
           if (atRisk.length > 0) {
-            await sendAlertEmail(sub.email, sub.wallet_address, atRisk, sub.health_factor_threshold, ethPriceUSD);
+            console.log(`[cron] Sending alert email to ${sub.email}`);
+            await sendAlertEmail(sub.email, sub.wallet_address, atRisk, sub.health_factor_threshold, ethPriceUSD, sub.unsubscribe_token);
             alertsSent++;
+            console.log(`[cron] Alert sent to ${sub.email}`);
           }
         } catch (err) {
-          console.error(`Error processing ${sub.email}:`, err);
+          console.error(`[cron] Error processing ${sub.email}:`, err);
         }
       })
     );
@@ -412,6 +462,8 @@ export async function GET(request: Request) {
       await new Promise((r) => setTimeout(r, 200));
     }
   }
+
+  console.log(`[cron] Done — checked: ${positionsChecked}, alertsSent: ${alertsSent}`);
 
   return NextResponse.json({
     success: true,
