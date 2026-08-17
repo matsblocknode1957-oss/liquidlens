@@ -1,8 +1,14 @@
 import { NextResponse } from "next/server";
 
-const GRAPH_ENDPOINT = `https://gateway.thegraph.com/api/${process.env.GRAPH_API_KEY}/subgraphs/id`;
-const AAVE_SUBGRAPH = "Cd2gEDVeqnjBn1hSeqFMitw8Q1iiyV9FYUZkLNRcL87g";
-const COMPOUND_SUBGRAPH = "AwoxEZbiWLvv6e3QdvdMZw4WDURdGbvPfHmZRc8Dpfz9";
+// Aave v3 Pool — Ethereum mainnet
+const AAVE_V3_POOL = "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2";
+// keccak256("LiquidationCall(address,address,address,uint256,uint256,address,bool)")
+const AAVE_LIQUIDATION_TOPIC = "0xe413a321e8681d831f4dbccbca790d2952b56f977908e45be37335533e005286";
+
+// Compound v3 USDC Comet — Ethereum mainnet
+const COMPOUND_COMET = "0xc3d688B66703497DAA19211EEdff47f25384cdc3";
+// keccak256("AbsorbDebt(address,address,uint256,uint256)")
+const COMPOUND_ABSORB_TOPIC = "0x1547a878dc89ad3c367b6338b4be6a65a5dd74fb77ae044da1e8747ef1f4f62f";
 const ALCHEMY_RPC = process.env.ALCHEMY_RPC_URL!;
 
 // DAI contract for total supply (= total DAI borrowed)
@@ -52,51 +58,34 @@ async function getChainlinkPrice(feedAddress: string): Promise<number> {
 }
 
 async function fetchAaveData() {
-  const liqQuery = `{
-    liquidationCalls(first: 4, orderBy: timestamp, orderDirection: desc) {
-      user { id }
-      collateralReserve { symbol }
-      principalAmountInUSD
-      timestamp
-    }
-  }`;
   try {
-    const [llamaRes, liqRes] = await Promise.all([
+    const latestBlock = await rpcCall("eth_blockNumber", []);
+    const fromBlock = "0x" + (parseInt(latestBlock, 16) - 7200).toString(16);
+    const [llamaRes, logs] = await Promise.all([
       fetch("https://api.llama.fi/protocol/aave-v3", { headers: { Accept: "application/json" } }),
-      fetch(`${GRAPH_ENDPOINT}/${AAVE_SUBGRAPH}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: liqQuery }),
-      }),
+      rpcCall("eth_getLogs", [{
+        fromBlock,
+        toBlock: "latest",
+        address: AAVE_V3_POOL,
+        topics: [AAVE_LIQUIDATION_TOPIC],
+      }]),
     ]);
     const llamaData = await llamaRes.json();
-    const liqData = await liqRes.json();
     const borrowed = llamaData?.currentChainTvls?.["Ethereum-borrowed"] ?? 0;
     const totalBorrowed = typeof borrowed === "number" ? borrowed : 0;
     const atRiskTotal = totalBorrowed * 0.045;
     const risk = getRiskLevel(atRiskTotal, totalBorrowed > 0 ? totalBorrowed : 4_200_000_000);
-    const liquidations = (liqData?.data?.liquidationCalls ?? []).map((l: any) => {
-      const wallet = l.user?.id ?? "0x0000";
-      const secondsAgo = Math.floor(Date.now() / 1000) - parseInt(l.timestamp || "0");
-      const timeAgo = secondsAgo < 3600 ? `${Math.floor(secondsAgo / 60)}m ago` : `${Math.floor(secondsAgo / 3600)}h ago`;
-      return {
-        wallet: `${wallet.slice(0, 6)}...${wallet.slice(-4)}`,
-        protocol: "Aave v3",
-        asset: l.collateralReserve?.symbol ?? "ETH",
-        amount: formatUSD(parseFloat(l.principalAmountInUSD || "0")),
-        time: timeAgo,
-      };
-    });
+    const liquidations24h = Array.isArray(logs) ? logs.length : 0;
     return {
       protocol: {
         name: "Aave v3", icon: "👻",
         totalBorrowed: totalBorrowed > 0 ? formatUSD(totalBorrowed) : "$4.2B",
         atRisk: atRiskTotal > 0 ? formatUSD(atRiskTotal) : "$180M",
         atRiskRaw: atRiskTotal > 0 ? atRiskTotal : 180_000_000,
-        liquidations24h: liquidations.length,
+        liquidations24h,
         ...risk,
       },
-      liquidations,
+      liquidations: [],
     };
   } catch (err) {
     console.error("Aave fetch error:", err);
@@ -108,38 +97,30 @@ async function fetchAaveData() {
 }
 
 async function fetchCompoundData() {
-  const liqQuery = `{
-    absorbs(first: 10, orderBy: blockTime, orderDirection: desc) {
-      absorber
-      blockTime
-      basePaidOut
-    }
-  }`;
   try {
-    const [llamaRes, liqRes] = await Promise.all([
+    const latestBlock = await rpcCall("eth_blockNumber", []);
+    const fromBlock = "0x" + (parseInt(latestBlock, 16) - 7200).toString(16);
+    const [llamaRes, logs] = await Promise.all([
       fetch("https://api.llama.fi/protocol/compound-v3", { headers: { Accept: "application/json" } }),
-      fetch(`${GRAPH_ENDPOINT}/${COMPOUND_SUBGRAPH}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: liqQuery }),
-      }),
+      rpcCall("eth_getLogs", [{
+        fromBlock,
+        toBlock: "latest",
+        address: COMPOUND_COMET,
+        topics: [COMPOUND_ABSORB_TOPIC],
+      }]),
     ]);
     const llamaData = await llamaRes.json();
-    const liqData = await liqRes.json();
     const borrowed = llamaData?.currentChainTvls?.["Ethereum-borrowed"] ?? 0;
     const totalBorrowed = typeof borrowed === "number" ? borrowed : 0;
     const atRisk = totalBorrowed * 0.023;
     const risk = getRiskLevel(atRisk, totalBorrowed > 0 ? totalBorrowed : 1_800_000_000);
-    // Count liquidations in last 24h
-    const oneDayAgo = Math.floor(Date.now() / 1000) - 86400;
-    const absorbs = liqData?.data?.absorbs ?? [];
-    const liquidations24h = absorbs.filter((a: any) => parseInt(a.blockTime) > oneDayAgo).length;
+    const liquidations24h = Array.isArray(logs) ? logs.length : 0;
     return {
       name: "Compound v3", icon: "🏦",
       totalBorrowed: totalBorrowed > 0 ? formatUSD(totalBorrowed) : "$1.8B",
       atRisk: atRisk > 0 ? formatUSD(atRisk) : "$42M",
       atRiskRaw: atRisk > 0 ? atRisk : 42_000_000,
-      liquidations24h: liquidations24h > 0 ? liquidations24h : 0,
+      liquidations24h,
       ...risk,
     };
   } catch (err) {
@@ -158,7 +139,6 @@ async function fetchMakerData() {
     const totalBorrowed = parseInt(totalSupplyHex, 16) / 1e18;
 
     // Get MakerDAO liquidation count in last 24h via log filter
-    const oneDayAgoHex = "0x" + (Math.floor(Date.now() / 1000) - 86400).toString(16);
     const latestBlock = await rpcCall("eth_blockNumber", []);
     // Approx 7200 blocks per day
     const fromBlock = "0x" + (parseInt(latestBlock, 16) - 7200).toString(16);
